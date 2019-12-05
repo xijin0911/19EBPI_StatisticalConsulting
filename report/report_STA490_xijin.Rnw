@@ -1,0 +1,2817 @@
+
+\documentclass[11pt, a4paper]{article}
+\usepackage{indentfirst}
+\usepackage{verbatim}
+\usepackage[vmargin=3cm, hmargin=2cm, headheight=14pt]{geometry}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{color}
+\usepackage{amsmath, amssymb}
+\usepackage{longtable}
+\usepackage{lscape}
+\usepackage{natbib}
+\usepackage{xspace}
+\usepackage[sc]{mathpazo}
+\linespread{1.05} 
+\usepackage[scaled]{helvet}
+\usepackage[section]{placeins}
+\usepackage{booktabs}
+
+\usepackage[font=sf, labelfont={sf}, margin=1cm]{caption}
+
+\usepackage[T1]{fontenc}
+\usepackage[latin1]{inputenc}
+
+% =======================================
+% Personalized layout
+\newcommand{\name}{Xijin Chen}
+\newcommand{\mail}{xijin.chen@uzh.ch}
+\newcommand{\versiondate}{\today}
+\newcommand{\client}{Thomas Radtke} 
+\newcommand{\clinic}{EBPI} % umlaute: \"a = ä, specify precisely, not just USZ 
+\newcommand{\supervisor}{Julia Braun} 
+\newcommand{\projecttitle}{What are predictors of long-term work participation in patients with cystic fibrosis undergoing lung transplantation?}
+\newcommand{\subtitle}{STA490: Statistical Consulting \\[.15cm]
+  {\Large Leonhard Held} \\[.25cm] 
+   {\large EBPI, Department of Biostatistics}}
+
+% =======================================
+
+\newcommand{\web}{www.biostat.uzh.ch}
+\newcommand{\grp}{Master Program in Biostatistics}
+\newcommand{\inst}{University of Zurich}
+\newcommand{\img}{\includegraphics[height=17mm, width = 53mm]{uzh_logo_e_pos}}
+\newcommand{\of}{of\xspace}
+
+\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
+\newcommand{\mytitle}[3]{
+\begin{center}
+\vspace*{-2.1cm}
+
+\HRule
+
+\vspace*{0.4cm}
+
+\begin{minipage}{0.4\textwidth}
+\thispagestyle{empty}
+\begin{flushleft}
+\hspace*{1cm}\img
+\end{flushleft}
+\end{minipage}
+\begin{minipage}{0.59\textwidth}
+\begin{flushleft} \large
+    \hspace*{3.8cm} \textsf{\grp} \\
+    \hspace*{3.8cm} \href{http://\web}{\textsf{\emph{\web}}}
+\end{flushleft}
+\end{minipage}
+
+\vspace*{0.4cm} \HRule
+
+\bigskip
+
+\textsf{\LARGE #2} \vspace*{0.5cm}
+
+\large{#1}
+
+\medskip
+
+\large{\name \ (\textit{\mail})}
+
+\medskip
+
+Version \of \versiondate
+
+\end{center}
+
+\medskip
+}
+
+
+% Headers and footers
+\fancypagestyle{standard}{
+\fancyhf{}
+\renewcommand{\footrulewidth}{0.4pt}
+\fancyfoot[c]{\thepage}
+\fancyfoot[l]{\textsf{\name}, \href{\mail}{\textsf{\emph{\mail}}}}
+\fancyfoot[r]{\textsf{\versiondate}}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[c]{}
+\fancyhead[l]{\textsf{\grp}}
+\fancyhead[r]{\textsf{\inst}}
+}
+
+% =======================================
+%bibliography
+\bibliographystyle{ims}
+
+<<include=FALSE,error=FALSE,message=FALSE>>=
+library(knitr)
+opts_chunk$set(
+fig.path='plots/p', echo = FALSE, results='hide', cache=TRUE)
+@
+
+% =======================================
+
+% =======================================
+% my latex commands
+\newcommand{\prog}[1]{\textsf{#1}}
+\newcommand{\pkg}[1]{\texttt{#1}}
+
+\begin{document}
+
+
+\pagestyle{standard}
+\mytitle{\projecttitle\\[.25cm] Analysis for \client, \clinic \\[.25cm] Supervision by \supervisor}{\subtitle}
+
+\bigskip
+
+% =======Some Initial settings for R==============
+<<setup, include=FALSE,echo=FALSE>>=
+library(zoo)#manipulation of pate variables
+library(RColorBrewer) # colors for plots
+library(tableone) # for Table 1 functions
+library(xtable) # formatting tables and generating the tex code
+library(likert) 
+library(biostatUZH) # EBPI-written package
+library(ggplot2) # customizable plots
+library(reporttools)#to make table in report
+library(ggpubr)
+library(plyr)
+library(ggbeeswarm)
+library(jtools)
+library(ggstance)
+library(superheat)
+library(reshape2)
+library(dplyr)
+library(tidyr)
+library(sjPlot)
+library(lme4)#linear mixed effects models
+library(stringr)#manipulation of work percentage
+library(huxtable)
+library(lmerTest)
+
+
+#source("../code/data_cleaning.R")
+
+@
+%========End of Initial Settings for R============
+
+
+<<data_clean,echo=FALSE,warning=FALSE,error=FALSE,results=FALSE,message=FALSE>>=
+#£data cleaning
+## Import Data
+## ------------
+dat <- read.csv("../data/newdata.csv")
+
+
+## sample size of the study population: 99
+## ----------------
+dat <- dat[,-1]
+dat <- unique(dat)
+dat <- dat[-nrow(dat),]
+dim(dat)#99  60
+
+## extract the useful ones
+## ----------------
+binary_pred <- (dat[,c(8,3,4,6,28,51,55,59)])
+colnames(binary_pred) <- c("Sex","Education","Relationship","Living",
+                           "Employment","CLAD","kidney_Tx","Cancer")
+num_pred <- dat[,c(9,26,27,44)]
+colnames(num_pred) <- c("Age","BMI","6MWD","FEV1")
+employ_stat <- dat[,c(30,32,34,36,38)]
+colnames(employ_stat) <- c("less_one","one_three","three_five",
+                           "five_ten","longer_ten")
+employ_percent <- dat[,c(31,33,35,37,39)]
+colnames(employ_percent) <- c("less_one_perc","one_three_perc",
+                              "three_five_perc","five_ten_perc",
+                              "longer_ten_perc")
+
+##relevel binary variables
+## ----------------
+binary_pred[] <- lapply(binary_pred, as.factor) 
+employ_stat[] <- lapply(employ_stat,as.factor)
+
+## creating binary variables
+## ----------------
+pred <- cbind(binary_pred, num_pred)
+out_percent <- employ_percent
+out_stat <- employ_stat
+
+levels(pred[,"Sex"]) <- c("male", "female")
+levels(pred[,"Education"]) <- c("Non-academic", "Academic ")
+
+levels(pred[,"Relationship"])[levels(pred[,"Relationship"])=="Divorced"|
+                                levels(pred[,"Relationship"])=="Single"] <- "single"
+levels(pred[,"Relationship"])[levels(pred[,"Relationship"])=="Engaged"|
+                                levels(pred[,"Relationship"])=="Relationship"|
+                                levels(pred[,"Relationship"])=="Married"] <- "not single"
+levels(pred[,"Relationship"])[levels(pred[,"Relationship"])!="single"&
+                                levels(pred[,"Relationship"])!="not single"] <- NA
+#two missing values for relationship status
+
+
+pred$Living <- ifelse(pred$Living=="allein","alone","not alone")
+pred$Living <- as.factor(pred$Living)
+
+pred$Employment <- as.factor(ifelse(pred$Employment==0,"Non-employed","Employed"))
+
+pred$CLAD <- as.factor(ifelse(pred$CLAD==0,"no","yes"))
+pred$kidney_Tx <- as.factor(ifelse(pred$kidney_Tx==0,"no","yes"))
+pred$Cancer <- as.factor(ifelse(pred$Cancer==0,"no","yes"))
+
+
+## work percentage(from nomial variables to continuous ones)
+## ----------------
+
+#less than one year work percentage
+factor1 <- levels(out_percent$less_one_perc)[out_percent$less_one_perc]
+factor1 <- str_replace(factor1, "40-60", "50")
+factor1 <- str_replace(factor1, "20 - 50", "35")
+factor1 <- str_replace(factor1, "30 - 50", "40")
+factor1 <- str_replace(factor1, "60-80", "70")
+out_percent$less_one_perc <- as.numeric(factor1)
+
+#one to three years work percentage
+factor2 <- levels(out_percent$one_three_perc)[out_percent$one_three_perc]
+factor2 <- str_replace(factor2, "40-60", "50")
+factor2 <- str_replace(factor2, "20 - 50", "35")
+factor2 <- str_replace(factor2, "30 - 50", "40")
+factor2 <- str_replace(factor2, "60-80", "70")
+factor2 <- str_replace(factor2, "80 - 100", "90")
+factor2 <- str_replace(factor2, "20-30", "25")
+factor2 <- str_replace(factor2, "20 - 30", "25")
+factor2 <- str_replace(factor2, "30 - 40", "35")
+out_percent$one_three_perc <- as.numeric(factor2)
+
+#three to five years work percentage
+factor3 <- levels(out_percent$three_five_perc)[out_percent$three_five_perc]
+factor3 <- str_replace(factor3, "20-30", "25")
+factor3 <- str_replace(factor3, "50-60", "55")
+out_percent$three_five_perc <- as.numeric(factor3)
+
+#five to ten years work percentage
+factor4 <- levels(out_percent$five_ten_perc)[out_percent$five_ten_perc]
+factor4 <- str_replace(factor4, "20-30", "25")
+factor4 <- str_replace(factor4, "50-60", "55")
+factor4 <- str_replace(factor4, "50 - 60", "55")
+out_percent$five_ten_perc <- as.numeric(factor4)
+
+#longer than ten years work percentage
+factor5 <- levels(out_percent$longer_ten_perc)[out_percent$longer_ten_perc]
+factor5 <- str_replace(factor5, "40-80", "60")
+factor5 <- str_replace(factor5, "20-30", "25")
+factor5 <- str_replace(factor5, "80-100", "90")
+factor5 <- str_replace(factor5, "(5-10)", "7")
+factor5[47] <- "7"
+factor5 <- str_replace(factor5, "50-60", "55")
+factor5 <- str_replace(factor5, "20-30", "25")
+out_percent$longer_ten_perc <- as.numeric(factor5)
+
+## consistency btw work percentage and work status
+## ----------------
+outcome <- cbind(ind=1:99,pred,out_percent,out_stat)
+outcome[which(outcome[,"less_one"]==0),][,"less_one_perc"]
+outcome[which(outcome[,"less_one"]==1),][,"less_one_perc"]
+outcome[which(is.na(outcome[,"less_one"])==TRUE),][,"less_one_perc"]
+#no wired data for percentage
+
+
+outcome[which(outcome[,"one_three"]==0),][,"one_three_perc"]
+#1 wired data for 1-3 years percentage
+outcome[which((outcome[,"one_three"]==0)&
+                (outcome[,"one_three_perc"] > 0)),][,"one_three"] <- 1
+outcome[which(outcome[,"one_three"]==1),][,c("ind","one_three_perc")]
+outcome[81,"one_three"] <- 0
+outcome[which(is.na(outcome[,"one_three"])==TRUE),][,c("ind","one_three_perc","one_three")]
+# the 4 and 40 indicator patient
+outcome[4,"one_three"] <- 0
+outcome[40,"one_three"] <- 1
+
+
+outcome[which(outcome[,"three_five"]==0),][,c("ind","three_five_perc","three_five")]
+#two wired data for 3-5 years percentage
+outcome[which((outcome[,"three_five"]==0)
+              &(outcome[,"three_five_perc"] > 0)),][,"three_five"] <- 1
+outcome[which(outcome[,"three_five"]==1),][,c("ind","three_five_perc","three_five")]
+outcome[which(is.na(outcome[,"three_five"])==TRUE),][,c("ind","three_five_perc","three_five")]
+
+
+outcome[which(outcome[,"five_ten"]==0),][,c("ind","five_ten_perc","five_ten")]
+# one wired data for percentage
+outcome[52,"five_ten_perc"] <- 0
+outcome[which(outcome[,"five_ten"]==1),][,c("ind","five_ten_perc","five_ten")]
+outcome[which((outcome[,"five_ten"]==1)
+              &(outcome[,"five_ten_perc"]==0)),][,"five_ten"] <- 0
+outcome[which(is.na(outcome[,"five_ten"])==TRUE),][,c("ind","five_ten_perc","five_ten")]
+outcome[58,"five_ten"] <- 1
+outcome[68,"five_ten"] <- 1
+
+
+outcome[which(outcome[,"longer_ten"]==0),][,c("ind","longer_ten_perc","longer_ten")]
+outcome[4,"longer_ten_perc"] <- 0
+outcome[which(outcome[,"longer_ten"]==1),][,c("ind","longer_ten_perc","longer_ten")]
+outcome[which(is.na(outcome[,"longer_ten"])==TRUE),][,c("ind",
+                                                        "longer_ten_perc","longer_ten")]
+outcome[78,"longer_ten"] <- 1
+
+date <- dat[,c("LTx_date","CLAD_ED",
+               "Kidney_Tx_Date","Start_Dialyse_Date","Cancer_ED","Waiting_list_date")]
+dat <- cbind(outcome,date)
+
+
+## creat time-varying variables by the date of LTx and case date
+## ---------------
+
+##CLAD
+CLAD_day <- dat[which(dat[,"CLAD"]=="yes"),][,c("ind","LTx_date","CLAD_ED")]
+CLAD_day$LTx_date <- as.character(CLAD_day$LTx_date)
+CLAD_day$LTx_date <- as.Date(CLAD_day$LTx_date,na.action=TRUE,format="%d/%m/%Y")
+CLAD_day$CLAD_ED <- as.character(CLAD_day$CLAD_ED)
+CLAD_day$CLAD_ED  <- as.yearmon(CLAD_day$CLAD_ED,"%m/%y")
+CLAD_day$CLAD_ED <- as.Date(CLAD_day$CLAD_ED,na.action=TRUE,format="%m/%y")
+
+
+CLAD_time <-  difftime(CLAD_day$CLAD_ED,CLAD_day$LTx_date, units = "days") # days
+CLAD_time_year <- cbind(CLAD_day$ind,(CLAD_time/365))#approximate years
+CLAD_day <- cbind(CLAD_day,duration=CLAD_time_year[,2])
+
+
+#CLAD: creat binary variable for each time period
+#1 year later
+CLAD_1 <- matrix(dat$CLAD,nrow=length(dat[,"CLAD"]),ncol=1)
+CLAD_1[-CLAD_day[which(CLAD_day["duration"]<1),][,"ind"],] <- "no"
+CLAD_1[dat[which(is.na(dat$CLAD)==TRUE),][,"ind"]] <- NA
+#3 years later
+CLAD_3 <- matrix(dat$CLAD,nrow=length(dat[,"CLAD"]),ncol=1)
+CLAD_3[-CLAD_day[which(CLAD_day["duration"]<3),][,"ind"],] <- "no"
+CLAD_3[dat[which(is.na(dat$CLAD)==TRUE),][,"ind"]] <- NA
+#5 year later
+CLAD_5 <- matrix(dat$CLAD,nrow=length(dat[,"CLAD"]),ncol=1)
+CLAD_5[-CLAD_day[which(CLAD_day["duration"]<5),][,"ind"],] <- "no"
+CLAD_5[dat[which(is.na(dat$CLAD)==TRUE),][,"ind"]] <- NA
+#10 years later
+CLAD_10 <- matrix(dat$CLAD,nrow=length(dat[,"CLAD"]),ncol=1)
+CLAD_10[-CLAD_day[which(CLAD_day["duration"]<10),][,"ind"],] <- "no"
+CLAD_10[dat[which(is.na(dat$CLAD)==TRUE),][,"ind"]] <- NA
+dat <- cbind(dat,CLAD_1,CLAD_3,CLAD_5,CLAD_10)
+
+
+
+#CLAD
+Cancer_day <- dat[which(dat[,"Cancer"]=="yes"),][,c("ind","LTx_date","Cancer_ED")]
+Cancer_day$LTx_date <- as.character(Cancer_day$LTx_date)
+Cancer_day$LTx_date <- as.Date(Cancer_day$LTx_date,na.action=TRUE,format="%d/%m/%Y")
+Cancer_day$Cancer_ED <- as.character(Cancer_day$Cancer_ED)
+Cancer_day$Cancer_ED[4] <- "04/11"
+Cancer_day$Cancer_ED  <- as.yearmon(Cancer_day$Cancer_ED,"%m/%y")
+Cancer_day$Cancer_ED <- as.Date(Cancer_day$Cancer_ED,na.action=TRUE,format="%m/%y")
+Cancer_time <-  difftime(Cancer_day$Cancer_ED,Cancer_day$LTx_date, units = "days") # days
+Cancer_time_year <- cbind(Cancer_day$ind,(Cancer_time/365))#approximate years
+Cancer_day <- cbind(Cancer_day,duration=Cancer_time_year[,2])
+#1 year later
+Cancer_1 <- matrix(dat$Cancer,nrow=length(dat[,"Cancer"]),ncol=1)
+Cancer_1[-Cancer_day[which(Cancer_day["duration"]<1),][,"ind"],] <- "no"
+Cancer_1[dat[which(is.na(dat$Cancer)==TRUE),][,"ind"]] <- NA
+
+#3 year later
+Cancer_3 <- matrix(dat$Cancer,nrow=length(dat[,"Cancer"]),ncol=1)
+Cancer_3[-Cancer_day[which(Cancer_day["duration"]<3),][,"ind"],] <- "no"
+Cancer_3[dat[which(is.na(dat$Cancer)==TRUE),][,"ind"]] <- NA
+
+#5 year later
+Cancer_5 <- matrix(dat$Cancer,nrow=length(dat[,"Cancer"]),ncol=1)
+Cancer_5[-Cancer_day[which(Cancer_day["duration"]<5),][,"ind"],] <- "no"
+Cancer_5[dat[which(is.na(dat$Cancer)==TRUE),][,"ind"]] <- NA
+
+#10 year later
+Cancer_10 <- matrix(dat$Cancer,nrow=length(dat[,"Cancer"]),ncol=1)
+Cancer_10[-Cancer_day[which(Cancer_day["duration"]<10),][,"ind"],] <- "no"
+Cancer_10[dat[which(is.na(dat$Cancer)==TRUE),][,"ind"]] <- NA
+
+dat <- cbind(dat,Cancer_1,Cancer_3,Cancer_5,Cancer_10)
+
+
+#Kidney_dialysis
+kidney_Dialysis_day <- dat[which(dat[,"kidney_Tx"]=="yes"),][,c("ind",
+                                                                "LTx_date","kidney_Tx",
+                                                                "Kidney_Tx_Date",
+                                                                "Start_Dialyse_Date" )]
+
+######9 cases
+#two missing both date(kidney_TX and Dialyse)
+dat[47,"kidney_Tx"] <- NA
+dat[49,"kidney_Tx"] <- NA
+
+kidney_Dialysis <- dat$kidney_Tx
+#1 year later
+kidney_Dialysis_1 <- matrix(dat$kidney_Tx,nrow=length(dat[,"kidney_Tx"]),ncol=1)
+kidney_Dialysis_1[which(kidney_Dialysis_1=="yes")] <- "no"
+#no case
+kidney_Dialysis_1 <- kidney_Dialysis_1
+#3 years later
+kidney_Dialysis_3 <- matrix(dat$kidney_Tx,nrow=length(dat[,"kidney_Tx"]),ncol=1)
+kidney_Dialysis_3[which(kidney_Dialysis_3=="yes")] <- "no"
+#no case
+kidney_Dialysis_3 <- kidney_Dialysis_1
+#5 years later
+kidney_Dialysis_5 <- matrix(dat$kidney_Tx,nrow=length(dat[,"kidney_Tx"]),ncol=1)
+kidney_Dialysis_5[which(kidney_Dialysis_5=="yes")] <- "no"
+kidney_Dialysis_5[1,] <- "yes"
+#1 case
+#10 years later
+kidney_Dialysis_10 <- matrix(dat$kidney_Tx,nrow=length(dat[,"kidney_Tx"]),ncol=1)
+kidney_Dialysis_10[17,] <- "no"
+kidney_Dialysis_10[79,] <- "no"
+dat <- cbind(dat,kidney_Dialysis,kidney_Dialysis_1,
+             kidney_Dialysis_3,kidney_Dialysis_5,
+             kidney_Dialysis_10)
+
+
+
+## waiting time
+## ---------------
+dat$Waiting_list_date <- as.character(dat$Waiting_list_date)
+dat$Waiting_list_date <- as.Date(dat$Waiting_list_date,format="%d/%m/%Y")
+dat$LTx_date <- as.character(dat$LTx_date)
+dat$LTx_date <- as.Date(dat$LTx_date,format="%d/%m/%Y")
+
+Waiting_time <-  difftime(dat$LTx_date, dat$Waiting_list_date, units = "weeks") # weeks
+Waiting_time <- as.numeric(Waiting_time)
+dat <- cbind(dat,Waiting_time)
+
+levels(dat$less_one) <- c("not work","work")
+levels(dat$one_three) <- c("not work","work")
+levels(dat$three_five) <- c("not work","work")
+levels(dat$five_ten) <- c("not work","work")
+levels(dat$longer_ten) <- c("not work","work")
+
+
+#check the names and levels of the datset
+
+dat$Education <- relevel(dat$Education,ref="Non-academic")
+dat$Employment <- relevel(dat$Employment,ref="Non-employed")
+dat$Relationship <- relevel(dat$Relationship,ref="not single")
+levels(dat$Relationship) <- c("Not single","Single")
+dat$Living <- relevel(dat$Living,ref="not alone")
+levels(dat$Living) <- c("Not alone","Alone")
+levels(dat$Sex) <- c("Female","Male")
+
+write.csv(dat,"../data/shortformat.csv")
+
+## Long Format Dataset
+## ---------------
+
+#1st choose the mean of the distance from LTx for longer than ten years period
+end <- as.Date("01/12/2016","%m/%d/%Y")
+duration <- difftime(rep(end,nrow(dat)), dat$LTx_date, units = "days")/365
+mean((as.numeric(duration[(as.numeric(duration)>10)])),na.rm=TRUE)
+
+dat1 <- reshape(dat, 
+                varying = c("less_one", "one_three", "three_five",
+                            "five_ten","longer_ten"), 
+                v.names = "Workstatus",
+                timevar = "Time", 
+                times = c(1,3,5,10,14), 
+                # new.row.names = 1:1000,
+                direction = "long")
+dat2 <- reshape(dat, 
+                varying = c("less_one_perc", "one_three_perc", 
+                            "three_five_perc","five_ten_perc",
+                            "longer_ten_perc"), 
+                v.names = "Percentage",
+                timevar = "Time", 
+                times = c(1,3,5,10,14), 
+                # new.row.names = 1:1000,
+                direction = "long")
+dat3 <- reshape(dat, 
+                varying = c("CLAD_1", "CLAD_3", 
+                            "CLAD_5","CLAD_10","CLAD"), 
+                v.names = "CLAD.l",
+                timevar = "Time", 
+                times = c(1,3,5,10,14), 
+                # new.row.names = 1:1000,
+                direction = "long")
+
+dat4 <- reshape(dat, 
+                varying = c("Cancer_1", "Cancer_3", 
+                            "Cancer_5","Cancer_10","Cancer"), 
+                v.names = "Cancer.l",
+                timevar = "Time", 
+                times = c(1,3,5,10,14), 
+                # new.row.names = 1:1000,
+                direction = "long")
+
+dat5 <- reshape(dat, 
+                varying = c("kidney_Dialysis_1", "kidney_Dialysis_3", 
+                            "kidney_Dialysis_5","kidney_Dialysis_10",
+                            "kidney_Dialysis"), 
+                v.names = "Kidney_Dialysis.l",
+                timevar = "Time", 
+                times = c(1,3,5,10,14), 
+                # new.row.names = 1:1000,
+                direction = "long")
+longdata<-cbind(dat1,Percentage=dat2$Percentage,
+                CLAD=dat3$CLAD.l,Cancer=dat4$Cancer.l,
+                Kidney_Dialysis=dat5$Kidney_Dialysis.l
+)
+longformat <- 
+  longdata[,c("ind","Sex","Education","Relationship","Living",
+              "Employment","Age","BMI", "6MWD",
+              "FEV1","Waiting_time","Time","Workstatus",
+              "Percentage","CLAD","Cancer","Kidney_Dialysis")]
+
+
+
+
+## ---------------
+#From the comments after final presentation, use the exact time for patients for the final period of time
+#1st still creat the the one with estimated percentage for the final period
+
+end <- as.Date("12/01/2016","%m/%d/%Y")
+duration <- difftime(rep(end,nrow(dat)), dat$LTx_date, units = "days")/365
+duration <- as.numeric(duration)
+sum(is.na(duration))#4 NA
+
+dat.dura <- cbind(dat,duration)
+patient_longerten <- dat.dura[which(duration>10),c("ind","duration")]
+#28 patients who end at the time period 5.
+patient_longerfive <- dat.dura[which((duration>5)&(duration<10)),c("ind","duration")]
+#19 patients who end at the time period 4.
+patient_longerthree <- dat.dura[which((duration>3)&(duration<5)),c("ind","duration")]
+#15 patients who end at the time period 3
+patient_longerone <- dat.dura[which((duration>1)&(duration<3)),c("ind","duration")]
+#23 patients who end at the time period 2
+patient_withinone <- dat.dura[which((duration<1)&(duration>0)),c("ind","duration")]
+#6 patients who end at the time period 2
+
+#the exact time for the final time period for each patient
+longdata2 <- longformat
+Num5 <- patient_longerten$ind+4*99
+Num4 <- patient_longerfive$ind+3*99
+Num3 <- patient_longerthree$ind+2*99
+Num2 <- patient_longerone$ind+1*99
+Num1 <- patient_withinone$ind
+longdata2[Num5,]$Time <- patient_longerten$duration
+longdata2[Num4,]$Time <- patient_longerfive$duration
+longdata2[Num3,]$Time <- patient_longerthree$duration
+longdata2[Num2,]$Time <- patient_longerone$duration
+
+
+longformat <- longdata2
+
+
+dat$X6MWD <- dat$`6MWD`
+@
+
+
+<<abstract_code,echo=FALSE,warning=FALSE,error=FALSE,results=FALSE,message=FALSE>>=
+#results from the final part, for the abstract
+final1_3  <- glm(one_three ~ Employment + Education,family=binomial,data=dat)
+ci_emp <- formatCI(exp(confint(final1_3))[2,],text = "english")
+ci_edu <- formatCI(exp(confint(final1_3))[3,],text = "english")
+
+longformat$ind <- factor(longformat$ind)
+fit_GLMM <- glmer(Workstatus ~ Employment + Education  + (1|ind) + CLAD + log(Time) ,
+                data=longformat, family="binomial")
+OR_GLMM <- exp(summary(fit_GLMM)$coefficients[,1])[-1]
+test <- confint(fit_GLMM)
+ci_GLMM <-formatCI(exp(test),text = "english")[-c(1:2)]
+
+fit_LMM <-lme4::lmer(Percentage ~ Employment  + Education +
+(1|ind) + Kidney_Dialysis +log(Time) ,
+data=longformat)
+coef_fit <- lmerTest::lmer(fit_LMM,data=longformat)
+coef_LMM <- (summary(coef_fit)$coefficients[,1])[-1]
+test <- confint(coef_fit)
+ci_LMM <-formatCI((test),text = "english")[-c(1:3)]
+@
+
+
+% =======================================
+\section{Abstract} \label{sec:abstract}
+% =======================================
+
+\textit{Background:}
+
+Cystic Fibrosis is a type of dysfunction of secretory glands, which affects lungs, digestive system and sweat glands. Lung transplantation is a standard of care for advanced lung diseases. Cystic fibrosis patients may be able to return to work after lung transplantation because of prolonged survival and improved quality of life. The aim of this study is to identify the predictors for long-term work participation in cystic fibrosis patients undergoing a lung transplant.
+
+
+\textit{Methods:}
+
+This retrospective study included \Sexpr{nrow(dat)} cystic fibrosis patients having received lung transplantation between January 1996 and December 2016 at University Hospital Zurich. Factors describing patients' basic characteristics (age, sex, Body Mass Index, Six-minute Walk Test Distance, education, relationship status, living status and pre-employment status) were retrieved from the patients' charts. After evaluation tests, all of those \Sexpr{nrow(dat)} cystic fibrosis patients entried in the waiting list to wait for a healthy lung. After the lung transplantation, the follow-up time was divided into five periods: within one year, one to three years, three to five years, five to ten years and more than ten years after lung transplantation. Lung recipients may go through some rejection, infection and transplantation-related complications during the follow-up time.
+
+To evaluate the work participation after lung transplantation, we investigated both work status and average of work percentage at each time period: one year, three years, five years, ten years after lung transplantation and the end of the study.
+
+Predictors for work status at each time point were identified by logistic regression. Predictors for work percentage at each time point were identified by linear regression. Based on the results from 'simple' regression from the measurements on each time point, generalized linear mixed models and linear mixed models were used for longitudinal data analysis to identify predictors for long-term work participation.
+
+The criterion for model selection in this study is the Bayesian Information Criterion (BIC).
+
+\textit{Results:}
+
+When focusing on each specific time point after lung-transplantation, the results from logistic regression show that there are two possible time-independent predictors for work status after lung transplantation: \textit{Pre-employment} and \textit{Education}. One to three years after lung transplantation, the odds ratio for \textit{Pre-employment} is \Sexpr{sprintf("%.2f",exp(coef(final1_3))[2])}, with 95\% confidence interval \Sexpr{ci_emp}. It shows very strong evidence for the effect on work status. The odds ratio for \textit{Education} is \Sexpr{sprintf("%.2f",exp(coef(final1_3))[3])}, (95\% confidence interval \Sexpr{ci_edu}), showing moderate evidence for its effect on work status.   
+
+The results from linear regression show that the only predictor for work percentage after lung transplantation is \textit{Pre-employment}. The strength of evidence varies between time periods.
+
+
+From the results of longitudinal data analysis, besides \textit{Pre-employment} and \textit{Education}, there are some time-dependent factors that may have an effect on work participation.
+
+From the results of the generalized linear mixed-effects model, \textit{CLAD} (Chronic Lung Allograft Dysfunction) would have a negative effect on the post-transplantation work status. The odds ratio is \Sexpr{sprintf("%.2f",OR_GLMM[3])}, 95\% confidence interval \Sexpr{ci_GLMM[3]}, showing strong evidence of the negative effect on the work status after lung transplantation.
+
+From the result of the linear mixed-effects model, \textit{Kidney-Dialysis} would have a negative effect on the post-transplantation work percentage. The coefficient is \Sexpr{sprintf("%.2f",coef_LMM[3])}, 95\% confidence interval  \Sexpr{ci_LMM[3]}, with moderate evidence for the association between \textit{Kidney-Dialysis} and long-term work percentage.
+
+
+\textit{Conclusions:}
+
+We determined time-independent factor \textit{Pre-employment} and \textit{Education} as the factors that would have an effect on both work status and work percentage after lung transplantation. Besides time-independent factor, we decided to use \textit{CLAD} as another predictor for the long-term work status after transplantation. \textit{Kidney-Dialysis} is the predictor that we chose for the long-term work percentage after transplantation.
+
+In a word, patients who were employed, and with academic education before transplantation would be more likely to return to work. Chronic Lung Allograft Dysfunction is a kind of limitation for the cystic fibrosis patients to return to work after transplantation. Patients who had kidney transplantation or dialysis after transplantation, would work less than the others without renal dysfunctions.
+
+\vspace{2cm}
+
+% =======================================
+\section{Introduction} \label{sec:intro}
+% =======================================
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 1.LTx and CF,work participation
+\subsection*{Cystic fibrosis, lung transplantation and work participation} 
+
+Cystic fibrosis (CF) is a genetic disorder passed down from generations to generations. It is caused by the presence of mutations in both copies of the gene for cystic fibrosis transmembrane conductance regulator (CFTR) protein. Those with a single working copy are carriers and otherwise mostly unaffected When the protein is not working correctly, it's unable to help move chloride, a component of salt, to the cell surface. Without chloride attracting water to the cell surface, the mucus in various organs becomes thick and sticky. In the lungs, mucus clogs the airways and traps germs, e.g. bacteria, leading to infections, inflammation, respiratory failure, and other complications. Cystic fibrosis patients frequently can not work due to cancers of the digestive tract, diabetes, heart failure, kidney problems and lung infections.
+  
+There is currently no cure for cystic fibrosis since it is inherited, but several kinds of treatments can ease symptoms and reduce complications. Those treatments can help prevent and control infections that occur in the lungs, remove and loosen mucus from the lungs, treat, prevent intestinal blockage and provide adequate nutrition as well. Currently, there are many options for treatment, e.g. medication, chest physical therapy, pulmonary rehabilitation and surgery. 
+
+Lung transplantation (LTx) has become the standard of care for patients with end-stage chronic respiratory failure, which is necessary when medical management alone can no longer maintain lung health and physical function \citep{derhovanessian2018chronic}. Lung transplantation is a surgery removing a diseased lung and replacing it with a healthy lung from a donor. Transplantation can be divided into two types, cadaveric transplantation from deceased organ donors and living transplant from part of one of the lungs form healthy adults. More than 6,400 lung transplantations have been performed since the first successful operations in the early 1980s \citep{hosenpud1997registry}. 
+
+Patients underwent evaluation tests as a preparation process before lung transplantation, including a variety of medical tests that provide complete information about overall health of patients. Those medical tests aim at helping the lung transplant team to identify any potential problem before the transplant surgery and avoid potential complications after the surgery. From a practical perspective, patient selection involves analysis of standard investigations designed to identify comorbidities that may increase risk, and to balance those against likely outcomes. After the evaluation tests, patients would entry in the waiting list before transplantation.
+
+Patients' work participation is a common clinical quality indicator being used to monitor the performance of healthcare services \citep{choong2017linking}, which helps to assess the quality of care, identify and prioritize areas for improvement \citep{crampton2004makes}, \citep{mainz2003defining}. In addition to life expectancy, this simple measure of health outcome can also reflect the reduction of disability and improvement of health-related quality of life (HRQoL). As indicated in \cite{tumin2016attained} and \cite{suhling2015employment}, lung transplantation can alleviate some physiological barriers to employment. Therefore, work participation can be used as an indicator for long-term performance after lung transformation \citep{krivchenia2016long}. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 2.Recent studies
+\subsection*{Evidence from recent studies} 
+
+There is a great number of references related to work participation after organ transplantation. In the analysis of solid organ transplantation, there is a list of factors being positively associated with returning to work after organ transplantation. Being employed before transplantation \citep{hunt1996effect, nour2015factors, white2011factors}. High level educated patients, male patients would be more likely to return to work after organ transplantation from the results in \cite{vieux2018predictors}.
+
+In terms of lung transplantation for lung diseases in cystic fibrosis patients, better outcomes are limited by a list of factors \citep{targett2013employment, taylor2013longitudinal, laborde2012employment}. As shown across studies \cite{huda2015employment, eppenberger2015back, aaberg2016prolonging, matas1996employment}, pre-employment is the most consistent and dominant predictor for work participation. There is a strong positive association between the pre-employment and post work status. From the study \cite{krivchenia2016long}, lack of work history before lung transplantation was identified as a barrier to post-transplant employment in cystic fibrosis patients. 
+The result of influence of education levels should not be ignored by \cite{krivchenia2016long}. In this study for lung transplantation for cystic fibrosis patients, the level of education was associated with the work participation  after lung transplantation. From \cite{laborde2012employment}, not only education, but also best predicted FEV1(\%) showed a significant effect on the post-transplantation work status in multivariate analysis.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%4.factors that we are interested with
+\subsection*{Possible predictors in our study} 
+
+There is also a list of possible predictors in our study. Patient attributes and physical characteristics are common basic information that can be retrieved or tested. Evidence shows that clinical decision making varies according to patients \citep{lutfey2008patient}, as characteristics provide important information about prior probability that a given patient will experience a given condition or problem. 
+
+The level of education can tell us about the possible post-transplantation work participation to some extent. Well-educated patients are more likely to go into skilled labor as opposed to manual work. Therefore, highly-educated patients would be more likely to return to work. 
+
+Measurements like body mass index, six-minute walk test distance \citep{tuppin2008predictive}, reflect physical functions of patients, which are directly related to the performance after lung transplantation. It varies greatly, depending on age, blood type, the status of the lung of patients and the availability of a donor lung that is a good match. People who are unable to wait may be considered for lung transplant from a living donor. Up to 25 to 41 \% of cystic fibrosis patients have died while awaiting a healthy lung as illustrated by \cite{vizza2000outcome}, \cite{sharples1993prognosis}, \cite{stanchina2002association} and \cite{ciriaco1995analysis}. Therefore, too long waiting time may impede the patient's utility gain from the treatment. 
+
+
+A list of risks after a lung transplantation could also bring some barriers to work participation. Rejection is a normal body reaction to a foreign object or tissue. When an organ is transplanted into a person's body, their immune system sees it as a threat and attacks the organ. From the study \cite{derhovanessian2018chronic}, main limitation to better long-term survival after lung transplantation is chronic lung allograft dysfunction (CLAD). 
+
+After solid organ transplantation, the risk of cancer in the digestive tract is elevated 2-4 fold compared with population controls. The high risks for cancer are associated with viral infections, including Mb, Hodgkin and non-Hodgkin lymphoma (NHL) (caused by Epstein Barr virus [EBV]), anogenital cancer (human papillomavirus), and liver cancer (hepatitis C and B virus), but also for other malignancies such as lung, kidney, skin, and thyroid cancer.
+
+%start
+Better management of medical complications may lead to improved long-term outcomes. Improvements in surgical techniques, lung preservation, immunosuppression, and management of infections have influenced the improvements in mortality by \cite{trulock2007registry}. 
+
+Renal dysfunction is one of the most common long-term complications of lung transplantation and may have an effect on the post-transplantation work participation, with an incidence of 25.5\% at 1 year after transplant and 37.8 at 5 years after transplant from \cite{trulock2007registry}. The development of chronic renal failure increases the risk of death by four to five fold in patients who have undergone lung transplant \citep{ojo2003chronic}. The progression of chronic renal failure ultimately leads to renal replacement therapy in the form of dialysis or renal transplantation. 
+
+Pulmonary function test results (forced expiratory volume in one second [FEV1]), were expressed as the percentage of the predicted value and the best values achieved after the lung transplantation. FEV1, as a result of breathing test, is normally used to show the severity of chronic obstructive pulmonary disease. The measurement of FEV1 for a given patient is compared to reference values. The reference value is based on healthy individuals with normal lung function and it shows the values that would be expected for someone of the same sex, age and height. If the predicted values of patients are within 80\% of the reference value, the results are considered normal. As indicated in \cite{cicutto2004factors}, the value of FEV1 count for work participation.
+
+Therefore, our study would investigate all the possible predictors listed above to identify the predictors for long-term work participation in cystic fibrosis patients after lung transplantation.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%6.the specific point of our study
+
+\subsection*{Aim of our study} 
+
+In an attempt to characterize the impact of lung transplantation on the long-term work participation for cystic fibrosis patients, the aim of our study is to identify the predictors for long-term work participation after lung transplantation.
+
+To our acknowledgement, there is no research about the longitudinal data analysis with respect to both work status and work percentage after lung transplantation. 
+
+Our study identified the predictors not only for work status, but also for work percentage, as a compensation analysis. After the conventional analysis at each time point, our study took the effect of time-dependent factors and time into consideration and analyzed outcomes for all time periods by longitudinal analysis. Finally, identifying the predictors for long-term work participation among cystic fibrosis patients.
+
+
+ 
+\vspace{1cm}
+% =======================================
+\section{Research Questions} \label{sec:questions}
+% =======================================
+\begin{enumerate}
+    \item What are the predictors for work status in cystic fibrosis patients after lung transplantation?
+    \item What are the predictors for work percentage in cystic fibrosis patients after lung transplantation?
+\end{enumerate}
+\vspace{1cm}
+% =======================================
+\section{Methods} \label{sec:methods}
+% =======================================
+
+% =======================================
+\subsection*{Study Design} \label{subsec:design}
+% =======================================
+\vspace{0.5cm}
+\subsubsection*{Type of study}
+Retrospective, single center study in the University Hospital Zurich.
+
+\vspace{0.5cm}
+\subsubsection*{Study population}
+The study population is  \Sexpr{nrow(dat)} cystic fibrosis patients receiving lung transplantation, from January 1996 to December 2016.
+
+\vspace{0.5cm}
+\subsubsection*{Data collection} 
+\label{sec:datacollect}
+Social-demographic factors about the basic information of patients (age, sex, education, relationship status, BMI, living status, six-minute walk distance and pre-employment status) were recorded before the transplantation. Among those factors, education was dichotomized into academic or non-academic. Relationship status was dichotomized into single or divorced versus with relationship or married/engaged. Living status was dichotomized into alone and not alone. Pre-employment status were indicated whether the patient was employed or not before the lung transplantation. 
+
+The six-minute walk test (6MWD) measured the distance a patient was able to walk over a total of six minutes on a hard, flat surface. The measurement was a performance-based measure of functional exercise capacity. Body Mass Index was calculated based on the weight and height of patients.
+
+
+All of those \Sexpr{nrow(dat)} cystic fibrosis patients had finished evaluation tests. The date for waiting list and lung transplantation were recorded, which were needed for the waiting time. The bio-medical factor waiting time was transformed into weeks, unlike the dichotomy for waiting time \cite{laborde2012employment}, to get more accurate result of the influence of waiting time on post-transplantation work participation. 
+
+Observations were obtained at five time points: one year, three years, five years, ten years after lung transplantation and at the end of the study. The best FEV1(\%) out of all those repeated measurements for our patients was used. Besides, we got the exact time for chronic lung allograft dysfunction (CLAD), Kidney transplant, dialysis and cancer if these events occurred.
+
+Work participation, were evaluated in two ways, work status and the average of work percentage between two separate time points of measurements after lung transplantation. Post-transplant work status was divided into not work or work after lung transplantation, post-transplant work percentage was from 0 to 100(\%).
+  
+
+
+\vspace{0.5cm}
+% =======================================
+\subsection*{Statistical Analysis} \label{subsec:statmethods}
+% =======================================
+\subsubsection*{Data preparation}
+
+We used the difference between the date of putting on the waiting list and date of lung transplantation for waiting time of each patient, the differences were transformed into weeks.
+
+Similarly, we calculated the difference between the date of events and date of lung transplantation,  and then compared the difference with the date of each time point: one year, three years, five years, ten years after lung transplantation and at the end of the study. The results of comparison were used to create binary variables for each time periods. Therefore, those time-varying variables, increased monotonously with time.
+
+This time-varying variable takes two events into consideration: kidney transplantation and dialysis. Both of them are management for the complication of renal dysfunction, so we created one binary variable to reflect the effect of renal dysfunction on the work participation after lung transplantation.
+
+work status and work participation, and those three time-varying variables were measured repeatedly at several time points, we transformed whole dataset into long-format data for the preparation of the longitudinal data analysis.
+
+Since the period of waiting time vary a lot for each patient, not all of those \Sexpr{nrow(dat)} patients would go through the
+whole study period (20 years). Therefore, those \Sexpr{nrow(dat)} patients may have different number of repeated measurements. Some of those patients would have measurements for both outcomes and time-dependent factors for all five time points, while others may have only 1.
+
+\vspace{0.5cm}
+\subsubsection*{Statistical model}
+
+For work status after transplantation, logistic regressions were used for different time periods. Based on the result of initial analysis, generalized linear mixed effect model was used for longitudinal data analysis.
+
+For work percentage after transplantation, simple linear regressions were used for different time periods. Based on the result of initial analysis, linear mixed effect model was  used for longitudinal data analysis.
+
+
+\vspace{0.5cm}
+\subsubsection*{Visualization methods}
+We used a great number of visualization methods in our study:
+
+\begin{enumerate}
+\item Boxplot: Age, Sex, Living status, Relationship status, Post-transplantation work percentage.
+
+\itemn Histogram: Waiting time, BMI and Best FEV1(\%).
+
+\item Jitter plot: Two by two table visualization.
+
+\item Heatmap: The distribution of time-varying variables.
+
+\item Likert: Post-transplantation work status.
+
+\item Barplot: Number of repeated measurement for patients.
+
+\end{enumerate}
+\vspace{0.5cm}
+\subsubsection*{Implementation}
+
+We used a great number of packages for implementation.
+
+\begin{enumerate}
+\item Data cleaning: \textit{zoo} for the date variables, \textit{stringr} for vectorization of characteristics variables and \textit{tidyr} for gathering values.
+
+
+\item Table making: \textit{tableone}, \textit{xtable}, \textit{reporttools} and related function in \textit {biostatUZH} from EBPI.
+
+\item Plot: \textit{likert}, \textit{ggplot2}, \textit{ggpubr},\textit{superheat}, \textit{RColorBrewer} for colors for plots, \textit{ggbeeswarm} and \textit{sjPlot}, 
+
+\item Longitudinal data analysis: \textit{lme4}, \textit{lmerTest}.
+
+\end{enumerate}
+
+\clearpage
+
+
+\vspace{2cm}
+% =======================================
+\section{Data Description} \label{sec:Description}
+% =======================================
+% =======================================
+\subsection*{Data description for possible predictors} \label{subsec:factors}
+% =======================================
+As is shown in section \ref{sec:datacollect}, factors were collected before lung transformation or after transformation. We have repeated measurements on those factors we collected from different time points. However, not all of those post-transplantation factors would change with time. \textit{Best FEV1\% pred} is a factor that have repeated measurements, but being time-independent.
+
+We classify the types of predictors based on the whether they change with time, in other words, time-dependent factors and time-independent factors.
+
+\vspace{1cm}
+% =======================================
+\subsubsection*{Description for time-independent factors}\label{subsubsec:time_ind}
+% =======================================
+\begin{table}[ht]
+\centering
+<<charater,results='asis',echo=FALSE,warning=FALSE,error=FALSE>>=
+
+dat.ind <- dat[,c("Age","BMI","6MWD","FEV1","Waiting_time","Sex",
+                  "Education","Relationship","Living", "Employment")]
+colnames(dat.ind) <- c("Age","BMI","6MWD","Best FEV1 pred",
+                       "Waiting time","Sex","Education",
+                       "Relationship",
+                       "Living", "Pre-employment")
+Vars <- c("Age","BMI","6MWD","Best FEV1 pred","Waiting time",
+          "Sex","Education","Relationship","Living", "Pre-employment")
+tableOne <- CreateTableOne(vars = Vars, data = dat.ind)
+tab1 <- print(tableOne, showAllLevels = TRUE,
+              printToggle = FALSE, noSpaces = TRUE)
+kable(tab1, format = "latex",booktabs = T)
+@
+\caption{Time-independent factors}\label{tab:tab1}
+\end{table}
+
+The main characteristics of the \Sexpr{nrow(dat)} patients are listed in table \ref{tab:tab1}. The mean age of our study population is \Sexpr{round(mean(dat$Age),0)} years old. 
+
+Most of the patients had non-academic education 
+(\Sexpr{sprintf("%.2f",(sum(dat$Education=="Non-academic")/sum(!is.na(dat$Education))*100))}\%), 
+living not alone 
+(\Sexpr{sprintf("%.2f",(sum(dat$Living=="Not alone",na.rm = T)/sum(!is.na(dat$Living))*100))}\%) 
+and being single 
+(\Sexpr{sprintf("%.2f",(sum(dat$Relationship=="Not single",na.rm = T)/sum(!is.na(dat$Relationship))*100))}\%). With regard to sex, there is a balance in this study population. 
+
+The mean of the waiting time for a healthy lung in this study population is about 
+\Sexpr{round(mean(dat$Waiting_time,na.rm=T),0)} weeks 
+(\Sexpr{round(mean(dat$Waiting_time,na.rm=T),0)*7/30} months). There is high variance of the waiting time among all those patients.
+
+\begin{figure}[ht]
+\centering
+<<agesex,warning=FALSE,fig.height=3,fig.width=8,warning=FALSE,error=FALSE,results=FALSE,message=FALSE>>=
+mu <- ddply(dat, "Sex", summarise, grp.mean=mean(Age))
+agesex_plot <- ggplot(dat, aes(x=Sex, y=Age,fill=Sex)) + 
+  geom_boxplot(alpha=0.4,outlier.colour="red", outlier.shape=8,
+                outlier.size=6)+
+  geom_dotplot(binaxis='y', stackdir='center',
+                 position=position_dodge(1))+
+  theme(legend.position="bottom")
+
+dat.choice <-  dat[-which(is.na(dat$Relationship)|
+                            is.na(dat$Living)),]
+
+df2 <- data.frame(table(dat.choice$Relationship,dat.choice$Living))
+levels(dat.choice$Living) <- c("living alone","not alone")
+colnames(df2) <- c("Relationship","Living","counts")
+
+status2 <- ggplot(df2,aes(x=Living,y=counts, fill = Relationship)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+  geom_text(aes(label=counts), vjust=1.6, 
+            position = position_dodge(0.9), size=5)+
+  scale_fill_brewer(palette="Paired")+
+  theme(legend.position="bottom",legend.title = element_blank())
+
+ggarrange(agesex_plot,status2)
+@
+\caption{Distributions of population with respect to Sex, Age, Living and Relationship Status}\label{fig:fig1}
+\end{figure}
+
+Figure \ref{fig:fig1} shows that for male and female patients, the distribution of age are very similar. The mean of age in these two groups, are both around \Sexpr{round(mean(dat$Age),0)} years old. The age of half of the patients range from \Sexpr{round(data.frame(quantile(dat$Age))["25%",],0)} to \Sexpr{round(data.frame(quantile(dat$Age))["75%",],0)} years old. There is one outlier, who was much older than the rest of patients. This is an individual case with age of \Sexpr{max(dat$Age)} years old. The distribution of age of patients illustrate the fact that too old patients would not be proper candidates for lung transplantation.
+
+
+As for relation status and living status, there is an obvious imbalance. Much more patients were living alone, and the proportion of single patients was twice as large as the proportion of the not single group.
+
+
+\begin{figure}[ht]
+<<contin,warning=FALSE,message=TRUE,fig.height=2.5,fig.width=6,error=FALSE>>=
+barfill <- "#4271AE"
+barlines <- "#1F3552"  
+
+wait <- ggplot(dat,aes(x=Waiting_time))+
+  geom_density(fill=barfill,alpha=0.5)+
+  scale_x_continuous(name = "Waiting time in weeks",
+                     breaks = seq(0, 200, 30),
+                     limits=c(0, 200))+
+  labs(x = "Waiting time in weeks",y="density")+
+  theme(axis.title.y = element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  geom_vline(xintercept = mean(dat$Waiting_time,na.rm=T),
+             vline.data,col="red")
+
+bmi <- ggplot(dat,aes(x=BMI))+
+ geom_histogram(aes(y = ..density..),binwidth=2,
+                 colour = barlines, fill = barfill)+
+  scale_x_continuous(name = "BMI",
+                     breaks = seq(0, 35, 5),
+                     limits=c(0, 35))+
+  theme(axis.title.y = element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  geom_vline(xintercept = median(dat$BMI,na.rm=T),
+             vline.data,col="red")
+
+sixMWD <- ggplot(dat,aes(x=X6MWD))+
+  geom_histogram(aes(y = ..density..),binwidth=50,
+                 colour = barlines, fill = barfill)+
+  scale_x_continuous(name = "6MWD(m)",
+                     breaks = seq(0, 800, 150),
+                     limits=c(0, 800))+
+  theme(axis.title.y = element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  geom_vline(xintercept = median(dat$X6MWD,na.rm=T),
+             vline.data,col="red",na.rm=T)
+
+FEV <- ggplot(dat,aes(x=FEV1))+
+  geom_histogram(aes(y = ..density..),binwidth=10,
+                 colour = barlines, fill = barfill)+
+  scale_x_continuous(name = "FEV1(%)",
+                     breaks = seq(0, 150, 20),
+                     limits=c(0, 150))+
+  theme(axis.title.y = element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  geom_vline(xintercept = median(dat$FEV1,na.rm=T),
+             vline.data,col="red",na.rm=T)
+ggarrange(wait,bmi,FEV,ncol=3,nrow=1)
+@
+\caption{Distributions of some characteristics of physical functions}\label{fig:fig2}
+\end{figure}
+
+Figure \ref{fig:fig2} shows distributions of some characteristics of physical functions and waiting time. the longest waiting time for patients were about \Sexpr{round(max(dat$Waiting_time,na.rm=T),0)} weeks, while the lowest waiting time is very close to 0. In total, the majority of patients waited no longer than 60 weeks in this study.
+
+As shown in figure \ref{fig:fig2}, the mean of BMI is about \Sexpr{round(mean(dat$BMI,na.rm=T),2)} $kg/m^2$, the distribution of BMI tells us that majority of those \Sexpr{nrow(dat)} patients in this study population had lower than 25$kg/m^2$ BMI, indicating the underweight problem of cystic fibrosis patients, as a result of dysfunction of digestive system problems.
+\clearpage
+
+
+\begin{figure}[!ht]
+\centering
+<<assos,educationplot,warning=FALSE,,fig.height=3.5,fig.width=6>>=
+
+dat.select <- dat[-which(is.na(dat$Education)|
+												 	is.na(dat$one_three)),]
+edu1to3_tab <- table(dat.select$Education,dat.select$one_three)
+edu1to3 <- as.numeric(edu1to3_tab)
+names(edu1to3) <- c("nn","notwork","notaca","yy")
+
+  g1 <- ggplot(dat.select, aes(x=Education,y=one_three,col=Education))+
+  geom_jitter(width = 0.3, height = 0.3)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())+
+  theme(legend.position="bottom",
+        legend.text = element_text(size = 10),
+        legend.title=element_blank())+
+  labs(y="Post work status")+
+    geom_text(x=2, y=0.5, label = edu1to3["notwork"],size=5,col=1)+
+  geom_text(x=2, y=2.5, label=edu1to3["yy"],size=5,col=1)+
+  geom_text(x=1, y=0.5, label=edu1to3["nn"],size=5,col=1)+
+  geom_text(x=1, y=2.5, label=edu1to3["notaca"],size=5,col=1)
+
+
+dat.select2 <- dat[-which(is.na(dat$Employment)|
+												 	is.na(dat$one_three)),]
+
+emp1to3_tab <- table(dat.select2$Employment,dat.select2$one_three)
+emp1to3<- as.numeric(emp1to3_tab)
+names(emp1to3) <- c("nn","notwork","notemp","yy")
+
+g2 <- ggplot(dat.select2 ,labels=FALSE, 
+             aes(x=Employment,y=one_three,col=Employment))+
+  geom_jitter(width = 0.3, height = 0.3)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.title.y=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+  )+
+  geom_text(x=2, y=0.5, label=emp1to3["notwork"],size=5,col=1)+
+  geom_text(x=2, y=2.5, label=emp1to3["yy"],size=5,col=1)+
+  geom_text(x=1, y=0.5, label=emp1to3["nn"],size=5,col=1)+
+  geom_text(x=1, y=2.5, label=emp1to3["notemp"],size=5,col=1)+
+  theme(legend.position="bottom",
+        legend.text = element_text(size = 10),
+        legend.title=element_blank())
+ggarrange( g1, g2,nrow=1,ncol=2)
+@
+\caption{Distributions for Education and Pre-employment with respect to work status three years after LTx}\label{fig:fig3}
+\end{figure}
+
+
+
+We picked measurements from one specific time point to show the distribution of outcomes. The left figure in figure \ref{fig:fig3} shows that there are only \Sexpr{edu1to3_tab["Academic ","not work"]} cases, with academic education background, not working after lung transplantation.  
+
+Similarly, the right side in figure \ref{fig:fig3} illustrates that there are only \Sexpr{emp1to3_tab["Employed","not work"]} pre-employed cases, not working after lung transplantation.
+
+The total number in both plots are not corresponding to what is shown in table \ref{tab:tab1}, since there are some patients that we had no information for the work status one to three years after lung transplantation.
+
+Figure \ref{fig:fig3} indicates that there may be some relations between education or pre-employment and post-transplantation work status. 
+
+
+
+% =======================================
+\subsubsection*{Description for time-dependent factors}\label{subsubsec:time_dep}
+% =======================================
+<<timedep_tab,echo=FALSE,warning=FALSE,results='asis'>>=
+CLAD <- cbind(sum(dat$CLAD_1=="yes",na.rm = T),
+              sum(dat$CLAD_3=="yes",na.rm = T),
+              sum(dat$CLAD_5=="yes",na.rm = T),
+              sum(dat$CLAD_10=="yes",na.rm = T),
+              sum(dat$CLAD=="yes",na.rm = T),
+              sum(is.na(dat$CLAD)))
+
+Cancer <- cbind(sum(dat$Cancer_1=="yes",na.rm = T),
+                sum(dat$Cancer_3=="yes",na.rm = T),
+                sum(dat$Cancer_5=="yes",na.rm = T),
+                sum(dat$Cancer_10=="yes",na.rm = T),
+                sum(dat$Cancer=="yes",na.rm = T),
+                sum(is.na(dat$Cancer)))
+
+KD <- cbind(sum(dat$kidney_Dialysis_1=="yes",na.rm = T),
+            sum(dat$kidney_Dialysis_3=="yes",na.rm = T),
+                      sum(dat$kidney_Dialysis_5=="yes",na.rm = T),
+            sum(dat$kidney_Dialysis_10=="yes",na.rm = T),
+                      sum(dat$kidney_Dialysis=="yes",na.rm = T),
+            sum(is.na(dat$kidney_Dialysis)))
+            
+df.timedep <- rbind(CLAD,Cancer,KD)
+rownames(df.timedep) <- c("CLAD","Cancer",
+                          "Kidney-Dialysis")
+colnames(df.timedep) <- c("1 year",
+                        "3 years",
+                        "5 years",
+                        "10 years",
+                        "End of Study",
+                        "NA")
+res.table<-xtable(df.timedep, 
+                  caption = 'Number of events with respect to time-dependent factors', 
+                        table.placement ="", label = "tab:tab2")
+print(res.table, scalebox=0.8, caption.placement = "top")
+@
+
+
+<<heatmap_pre,echo=FALSE,warning=FALSE,error = FALSE, message=FALSE>>=
+dat.heat <- dat
+df <- dat.heat[,c("CLAD_1","CLAD_3","CLAD_5","CLAD_10","CLAD",
+             "Cancer_1","Cancer_3","Cancer_5","Cancer_10","Cancer",
+             "kidney_Dialysis_1","kidney_Dialysis_3",
+             "kidney_Dialysis_5","kidney_Dialysis_10","kidney_Dialysis")]
+cases <- 1:ncol(df)
+for(i in 1:ncol(df)){
+  levels(df[,i]) <- c(0,1)
+  df[,i]<-as.numeric(as.character(df[,i]))
+  cases[i] <- sum(df[i],na.rm = T)
+}  
+dat.slice <- slice(df, 1:nrow(dat),na.action=T)
+col.cluster <- as.vector(c(rep("CLAD",5),
+                           rep("Cancer",5),rep("Kidney-Dialysis",5)))
+@
+
+
+Table \ref{tab:tab2} shows the number of patients who got CLAD, Cancer or Kidney-Dialysis at each time point after lung transplantation. It is very clear that there are not too many events for all of those three complications and rejections (CLAD, Cancer and Kidney or Dialysis) at any time point, especially  for the earlier time periods after lung transplantation. The first event of kidney transplantation or dialysis arose three years after lung transplantation.
+
+
+
+\begin{figure}[!ht]
+<<timedep_heatmap,fig.height=3.5,figure.width=4>>=
+superheat(dat.slice,left.label = "none",
+          yt = cases,heat.na.col = "white",
+					yt.plot.type = "bar",
+					yt.axis.name = "Number of Events",
+					yt.obs.col =  c(rep("#fdcdac",5),
+													rep("#b3e2cd",5),
+													rep("#e5d8bd",5)),
+          heat.pal = c("#b35806", "white", "#542788"),
+          legend = F,
+          membership.cols = col.cluster,
+          bottom.label.col = c("#b3e2cd","#fdcdac","#e5d8bd"),
+          row.title.size = 6,
+          row.title = "Patients",
+          smooth.heat = F)
+@
+\caption{Time-dependent factors of the whole study population} \label{fig:fig5}
+\end{figure}
+
+
+Figure \ref{fig:fig5} shows the whole distribution of those three time-dependent factors among those \Sexpr{nrow(dat)} cystic fibrosis patients. The large orange part represents those patients who did not suffer from those three problems (Cancer, CLAD and Kidney Problems) during whole period of follow-up time. The corresponding proportion was very large, corresponding to the small number of events for any time period in table \ref{tab:tab2}.
+
+Purple horizontal lines in figure \ref{fig:fig5} indicate those patients who got CLAD, Cancer or Kidney-Dialysis after lung transplantation. Similarly in the histogram above the heatmap, the number of patients has increased with time.
+
+White horizontal lines showed there are some patients, whose information about \textit{Cancer}, \textit{CLAD} and \textit{Kidney-Dialysis} were missing. 
+
+Number of missing values was illustrated in table \ref{tab:tab2}. We lost the information for all three events of \Sexpr{sum(is.na(dat$CLAD))} patients and additional \Sexpr{sum(is.na(dat$kidney_Dialysis)) - sum(is.na(dat$CLAD))} patients for \textit{Kidney-Dialysis}. 
+
+From the bar on the top of this figure, \textit{CLAD} is much more common and \textit{Kidney-Dialysis} had the smallest number of events. Each bar illustrated the the number of events for each time point after transplantation. During the whole period of follow-up time, number of events for all those three diseases had increased with time. The number of events for all those three complication, rejection or transplantation-related disease were very small. In table \ref{tab:tab2}, the largest number of events was the number of patients for CLAD, \Sexpr{max(cases)} measured at the end of the study. 
+
+
+
+
+\clearpage
+% =======================================
+\subsection*{Data Description for outcomes} \label{subsec:outcomes}
+% =======================================
+% =======================================
+\subsubsection*{Data description for work percentage after LTx}\label{subsubsec:perc}
+% =======================================
+<<tenperc_pre,error=FALSE,warning=FALSE,results=FALSE>>=
+set.seed(10)
+ind <- sample(x=nrow(dat),size=10,replace=FALSE)
+v <- matrix(0,nrow=length(ind),ncol=6)
+colnames(v) <- c("Pre LTx Workstates","less_one_perc",
+                 "one_three_perc","three_five_perc",
+                 "five_ten_perc","longer_ten_perc")
+x <- matrix(1:ncol(v))
+pre <- as.vector(dat[,"Employment"])
+pre[which(pre[]=="Employed")] <- 100
+pre[which(pre[]=="Non-employed")] <- 0
+@
+
+
+
+\begin{figure}[ht]
+\centering
+<<tenperc,fig.height=3,fig.width=5.5>>=
+plot(spline(x,v[1,]),axes=FALSE, 
+     type="n",ylim=c(0,100),xlim=c(1,6),
+     ylab="Work Percentage(%)",
+		 xlab="Time Period after LTx")
+for(i in 1:length(ind)){
+  v[i,] <- c(pre[ind[i]],dat[ind[i],"less_one_perc"],
+             dat[ind[i],"one_three_perc"],dat[ind[i],"three_five_perc"],
+             dat[ind[i],"five_ten_perc"],dat[ind[i],"longer_ten_perc"])
+  lines(x,v[i,],col=i*5,type="o")
+  }
+
+	
+legend("bottomright", "Individual examples", pch=1, 
+       lty=1,inset=c(0,1), xpd=TRUE, horiz=TRUE, 
+       bty="n",cex = 1.25)
+
+
+y <- c(0,20,40,60,80,100)
+axis(side=1,at=x,col=1,font=3,lty=1,cex=25,
+     labels=c("pre LTx","<1","1-3","3-5","5-10",">10"))
+axis(side=2,at=y,col=1,font=3,lty=1,cex=25,
+     labels=c("0","20","40","60","80","100"))
+#title("Work percentage from a small sample(n=10)", line = 2.3)
+@
+\caption{Work percentage for 10 samples during different time periods} \label{fig:fig6}
+\end{figure}
+
+In figure \ref{fig:fig6}, we selected ten patients randomly, each line in the figure represents a single patient. It showed how did the work percentage at each time point change with time. The first time point "pre LTx" indicates the pre-transplantation work percentage, being estimated by the Pre-employed or Pre-not employed status. Therefore, the information of the pre-transplantation work percentage is not biased. We treated those non-employed before lung transplantation before as 0 for work percentage and those employed before lung transplantation as 100(\%) of work parentage. These estimates are not accurate, but it can help to show the change of work participation over time after lung transplantation.
+
+It is natural that patients would work less or never work right after lung transplantation, to allow optimal healing. One year after lung transplantation, work percentage started to increase. Three years later, the work percentage of those \Sexpr{length(ind)} patients seems to be more or less stable. It should not been ignored that, there are more and more loss to follow-up with time, even though there are only ten patients as a sample there, we can also see that average of work percentage of some patients was not accessible for later period of time.
+\clearpage
+
+<<percentplot_pre,echo=FALSE>>=
+percent <- dat[,c("less_one_perc","one_three_perc",
+                  "three_five_perc","five_ten_perc","longer_ten_perc")]
+colnames(percent) <-  c("Period 1 (<1 year)",
+                        "Period 2 (1 to 3 years)",
+                        "Period 3 (3 to 5 years)",
+                        "Period 4 (5 to 10 years)",
+                        "Period 5 (> 10 years)")
+
+@
+
+
+\begin{figure}[ht]
+\centering
+<<workperc,fig.height=3,fig.width=5,warning=FALSE>>=
+percent %>% 
+  tidyr::gather("Time", "value",1:5) %>% 
+  ggplot(., aes(x = Time, y = value,col=Time))+
+  labs(y = "Work percentage(%)",x="Time period after LTx") +
+	geom_jitter(width = 0.3, height = 0.5,size=2,na.rm=TRUE,shape=1)+
+  geom_boxplot(alpha=0.2)+
+	theme(line = element_blank())+
+	theme(panel.grid.major = element_blank(), 
+				panel.grid.minor = element_blank(),
+panel.background = element_blank(), 
+axis.line = element_line(colour = "black"))+
+  theme(legend.position="right",
+  			legend.text=element_text(size=8),
+  			legend.title =element_text(size=15),
+  			axis.text.x = element_blank())+
+  	scale_colour_hue(breaks= c("Period 1 (<1 year)",
+                       "Period 2 (1 to 3 years)","Period 3 (3 to 5 years)",
+                       "Period 4 (5 to 10 years)","Period 5 (> 10 years)"))+
+	theme(plot.title = element_text(size = 16, face = "bold"))
+@
+\caption{Post-transplantation work percentage of all the periods}\label{fig:fig7}
+\end{figure}
+
+
+We used the estimated pre-transplantation work percentage and only showed the post-transplantation work percentage of a sample of patients with size \Sexpr{length(ind)} in figure \ref{fig:fig6}. Figure \ref{fig:fig7} showed the work percentage after transplantation of whole study population. The dots in colors indicate the work percentage of patient at each time point after transplantation. The box for each time point shows distribution of work percentage. The upper and lower "hinges" correspond to the first and third quantile, and the middle line indicate the mean of work percentage. From the left to the right, the later of the follow-up period of time, the more patients were loss to follow-up. From \ref{tab:tab3, the last period of time, \textit{Period 5} had only one thirds patients left.
+
+Similar to what we have seen in figure \ref{fig:fig6} of \Sexpr{length(ind)} samples. Within one year after lung transplantation, there were many patients not working at all. It seems to be stable for the mean of work percentage during later time periods, although the information of a large number of patients were not accessible. 
+
+Since there was a large proportion of patients not working at all within one year after lung transplantation, we would check the residuals for our final model.
+
+
+\clearpage
+% =======================================
+\subsubsection*{Data description for work status after LTx}\label{subsubsec:status}
+% =======================================
+\begin{figure}[ht]
+\centering
+<<workstat,echo=FALSE,fig.height=3,fig.width=6>>=
+#the number of patients of working, NA and not working each time point
+timep1 <- as.factor(ifelse(is.na(dat$less_one), 
+                      "NA", dat$less_one))
+levels(timep1) <- c("Not work","Work","NA")
+timep1 <- factor(timep1, levels = c("Not work", 
+                          "NA", "Work"))
+timep2 <- as.factor(ifelse(is.na(dat$one_three), 
+                      "NA", dat$one_three))
+levels(timep2) <- c("Not work","Work","NA")
+timep2 <- factor(timep2, levels = c("Not work", "NA", "Work"))
+timep3 <- as.factor(ifelse(is.na(dat$three_five), 
+                      "NA", dat$three_five))
+levels(timep3) <- c("Not work","Work","NA")
+timep3 <- factor(timep3, levels = c("Not work", "NA", "Work"))
+timep4  <- as.factor(ifelse(is.na(dat$five_ten), 
+                       "NA", dat$five_ten))
+levels(timep4) <- c("Not work","Work","NA")
+timep4 <- factor(timep4, levels = c("Not work", "NA", "Work"))
+timep5 <- as.factor(ifelse(is.na(dat$longer_ten), 
+                      "NA", dat$longer_ten))
+levels(timep5) <- c("Not work","Work","NA")
+timep5 <- factor(timep5, levels = c("Not work", "NA", "Work"))
+likedat <- data.frame(timep1,timep2,timep3,timep4,timep5)
+colnames(likedat) <- c("Period 1 (<1 year)",
+                       "Period 2 (1 to 3 years)","Period 3 (3 to 5 years)",
+                       "Period 4 (5 to 10 years)","Period 5 (> 10 years)")
+ldatdat <- likert(likedat)
+plot(ldatdat,order=F)
+@
+\caption{Work status after LTx for all time periods}\label{fig:fig8}
+\end{figure}
+
+
+<<workstat_tab,echo=FALSE,results='asis'>>=
+col1 <- as.matrix(table(dat$less_one,exclude = NULL))
+col2 <- as.matrix(table(dat$one_three,exclude = NULL))
+col3 <- as.matrix(table(dat$three_five,exclude = NULL))
+col4 <- as.matrix(table(dat$five_ten,exclude = NULL))
+col5 <- as.matrix(table(dat$longer_ten,exclude = NULL))
+
+mat <- cbind(col1,col2,col3,col4,col5)
+Total <- cbind(nrow(dat[-which(is.na(dat$less_one)),]),
+               nrow(dat[-which(is.na(dat$one_three)),]),
+               nrow(dat[-which(is.na(dat$three_five)),]),
+               nrow(dat[-which(is.na(dat$five_ten)),]),
+               nrow(dat[-which(is.na(dat$longer_ten)),]))
+mat <- rbind(mat,Total)
+colnames(mat) <- c("Period 1","Period 2","Period 3",
+                   "Period 4","Period 5")
+rownames(mat) <- c("Work","Not work","NA","Total")
+res.table<-xtable(mat, caption = 'Post-LTx work status', 
+                  table.placement ="",label="tab:tab3")
+print(res.table, scalebox=1.0, caption.placement = "top")
+@
+
+When it comes to work status after lung transplantation, figure \ref {fig:fig8} and table\ref{tab:tab3} showed that, the proportion of loss to follow-up has increased a lot during the follow-up time periods, from \Sexpr{round(sum(timep1=="NA")/nrow(dat)*100,0)}\% of the whole study population to \Sexpr{round(sum(timep5=="NA")/nrow(dat)*100,0)}\% of the whole study population. The proportion of  not working patients after transplantation decreased monotonously, from \Sexpr{round(sum(timep1=="Not work")/nrow(dat)*100,0)}\% to \Sexpr{round(sum(timep5=="Not work")/nrow(dat)*100,0)}\%.
+
+\clearpage
+% =======================================
+\section{Results} \label{sec:results}
+% =======================================
+The first step was logistic regression for post-transplantation work status and linear regression for post-transplantation work percentage with respect to each time point after lung transplantation.
+
+From table \ref{tab:tab2}, time-dependent factors \textit{CLAD}, \textit{Cancer} and \textit{Kidney-Dialysis} did not have enough number of events. Therefore, we did not take those three time-dependent factors into consideration before the analysis for repeated measurements.
+
+We used BIC for model selection. 
+
+% =======================================
+\subsection*{Logistic regression for post-transplantation work status} \label{subsec:logis}
+% =======================================
+% =======================================
+\subsubsection*{Post-transplantation work status within one year} \label{subsubsec:logis1}
+% =======================================
+
+%Variable Selection based on AUC and BIC
+<<setup.log,echo=FALSE,results=FALSE,warning=FALSE,message=FALSE>>=
+dat.choice1 <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                           | is.na(dat$Education) | is.na(dat$Relationship)
+                           | is.na(dat$Living) | is.na(dat$Age)
+                           | is.na(dat$BMI) | is.na(dat$X6MWD)
+                           | is.na(dat$FEV1) | is.na(dat$less_one)
+                           | is.na(dat$Waiting_time)),]
+
+name_var=c("Age","FEV1","BMI","Education","Living",
+           "Employment","Relationship","Sex","X6MWD",
+           "Waiting_time","less_one","one_three",
+           "three_five","five_ten","longer_ten")
+@
+
+<<logreg1,echo=FALSE,results='asis',warning=FALSE,message=F>>=
+bic <- rep(NA,10)
+AUC <- rep(NA,10)
+fml <- rep(NA,10)
+for(i in 1:10){
+  fml[i] = paste(name_var[11],"~",name_var[i],sep="")
+  reg=glm(fml[i],family=binomial,data=dat.choice1)
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),2)
+  roc <- pROC::roc(dat.choice1$less_one ~ pred)
+  AUC[i] <- round(pROC::auc(roc),2)
+}
+auc <- round(AUC,digits = 2)
+bic <- round(bic,digits = 2)
+pv <- rep(NA,10)
+df1 <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var[11],"~",name_var[i],sep="")
+  reg=glm(fml[i],family=binomial,data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+  df1[i,] <- c(round(exp(coef(reg)[2]),digits = 2),
+               round(exp(confint(reg)[2,]),digits = 2))
+}
+
+df <- data.frame(df1[,1],formatCI(df1[,c(2:3)],text = "english"),pv,auc,bic)
+
+tab_colname <- c("Odds Ratio","$95\\%$-confidence interval","$p$-value","AUC","BIC")
+colnames(df) <- tab_colname
+tab_rowname <- c("Age","Best FEV1(\\%)","BMI","Education(Academic)",
+                 "Living(Alone)","Pre-employment(Employed)",
+                 "Relationship(Single)","Sex(Male)","6MWD","Waiting time")
+rownames(df) <- tab_rowname
+
+#df[,1] <- as.numeric(df[,1])
+df_tab <-xtable(df, caption = "Univariate models for work status 
+                within one year after LTx")
+print(df_tab, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+
+AUC and BIC were calculated based on the same dataset, which removed patients with missing values. Odds ratios and corresponding 95\% confidence interval were calculated from the whole dataset. 
+
+Within one year after lung transplantation, there are \Sexpr{as.numeric(as.matrix(table(dat$less_one))["not work",1])} patients did not work and \Sexpr{as.numeric(as.matrix(table(dat$less_one))["work",1])} worked. Our selected model would have at most three predictors.
+
+The univariate model with predictor \textit{Pre-employment}, has the much smaller BIC (\Sexpr{min(bic,na.rm=T)}) than other univariate models. It may have much more strong effect on the post-transplantation work status than other factors. We would like to take it as a predictor in any of the selected models. 
+
+<<logsel1,echo=FALSE,results='asis',warning=FALSE,message=F>>=
+reg0=glm(less_one ~ Employment,family=binomial,data=dat.choice1)
+
+reg1=glm(less_one ~ Education+ Living+Employment,family=binomial,data=dat.choice1)
+
+reg2=glm(less_one ~ Living+Employment,family=binomial,data=dat.choice1)
+
+reg3=glm(less_one ~ Education+Employment,family=binomial,data=dat.choice1)
+
+tab1 <- t(data.frame(BIC(reg1),BIC(reg3),BIC(reg2),BIC(reg0)))
+rownames(tab1) <- c("Pre-employment+Living+Education",
+                    "Pre-employment+Education","Pre-employment+Living",
+                    "Pre-employment")
+colnames(tab1) <- c("BIC")
+tab1_tab <- xtable(tab1,digits = 2,
+                   caption = "Model selection for 
+                   work status within one year after LTx",label="tab:tab5")
+print(tab1_tab, scalebox=0.8, caption.placement = "top")
+@
+
+
+<<logresult1,echo=FALSE,results='asis',warning=FALSE,message=F>>=
+final1  <- glm(less_one ~ Employment,family=binomial,data=dat)
+tableRegression(final1,
+                row.nam = "Pre-employment(Employed)",
+                caption="Selected model for work status 
+                less than one year after LTx",
+                caption.placement="top",label="tab:tab6")
+@
+
+Based on the the odds ratio from those univariate models, factors \textit{Education} and \textit{Living} also seem to have relatively strong effect on the post-transplantation work status. We compared the BIC values of all possible models, as is illustrated in table \ref{tab:tab5}.
+
+With the smallest value of BIC (\Sexpr{sprintf("%.2f",min(tab1))}), we determine \textit{Pre-employment} as the only  predictor for post-transplantation work status one year after lung transplantation. The result from table \ref{tab:tab6} shows that there is strong evidence for association between \textit{Pre-employment} and work status within one year after lung transplantation. \textit{Pre-employment} is the predictor we determined for work status within one year after lung transplantation.
+
+\vspace*{1cm}
+
+% =======================================
+\subsubsection*{Post-transplantation work status one to three years} \label{subsubsec:logis2}
+% =======================================
+
+<<logreg2,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+dat.choice2 <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                             | is.na(dat$Education) | is.na(dat$Relationship)
+                             | is.na(dat$Living) | is.na(dat$Age)
+                             | is.na(dat$BMI) | is.na(dat$X6MWD)
+                             | is.na(dat$FEV1) | is.na(dat$one_three)
+                             | is.na(dat$Waiting_time)),]
+for(i in 1:10){
+  fml[i] = paste(name_var[12],"~",name_var[i],sep="")
+  reg=glm(fml[i],family=binomial,data=dat.choice2)
+  
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),4)
+  roc <- pROC::roc(dat.choice2$one_three ~ pred)
+  AUC[i] <- round(pROC::auc(roc),4)
+}
+auc <- round(AUC,digits = 2)
+bic <- round(bic,digits = 2)
+
+#univariate models
+  df2 <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var[12],"~",name_var[i],sep="")
+  reg=glm(fml[i],family=binomial,data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+  df2[i,] <- c(exp(coef(reg)[2]),exp(confint(reg)[2,]))
+}
+rownames(df2) <- name_var[1:10]
+colnames(df2)<-c("OR","lower","upper")
+
+df <- data.frame(round(df2[,1],digits=2),
+                 formatCI(df2[,c(2:3)],text = "english"),
+                 pv,auc,bic)
+colnames(df)<- tab_colname
+rownames(df) <- tab_rowname
+df_tab <- xtable(df,digits = NULL,
+                 caption="Univariate models for work status one to three years after LTx")
+print(df_tab, scalebox=0.8, caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+
+@
+
+
+Similarly, from the result of univariate models one to three years after lung transplantation, the one with \textit{Pre-employment} as the only predictor has much lower BIC than other univariate models. The number of patients work work after lung transplantation is \Sexpr{as.numeric(as.matrix(table(dat$one_three))["not work",1])}. Therefore, we would also take at most 3 predictors into consideration.
+
+The results of odds ratios of univariate models show that, besides \textit{Pre-employment}, model with \textit{Education} is the only one whose odds ratio is far from 1. Therefore, \textit{Education} and \textit{Pre-employment} are possible predictors for work status one to three years after lung transplantation.
+
+
+<<logsel2,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+reg1=glm(one_three ~ Education+ Employment,family=binomial,data=dat.choice2)
+reg0=glm(one_three ~ Employment,family=binomial,data=dat.choice2)
+
+tab1 <- t(data.frame(BIC(reg0),BIC(reg1)))
+rownames(tab1) <- c("Pre-employment","Pre-employment+Education")
+colnames(tab1) <- c("BIC")
+tab1_tab <- xtable(tab1,digits = 2,
+                   caption = "Model selection for work status one to three years after LTx")
+print(tab1_tab, scalebox=0.8, caption.placement = "top")
+@
+
+
+The results determined \textit{Pre-employment} and \textit{Education} both as the predictors for work status one to three years after lung transplantation.
+
+<<logresult2,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+final2  <- glm(one_three ~ Employment + Education,family=binomial,data=dat)
+tableRegression(final2,caption="Selected model for work status one to three years after LTx",
+                caption.placement="top",
+                row.nam = c("Pre-employment(Employed)","Education(Academic)"),label="tab:tab9")
+@
+
+Table \ref{tab:tab9} shows there is also strong evidence that \textit{Pre-employment} has an effect on the work status. The evidence for \textit{Education} as a predictor is moderate.  
+
+\clearpage
+% =======================================
+\subsubsection*{Post-transplantation work status three to five years} \label{subsubsec:logis3}
+% =======================================
+
+\begin{figure}[ht]
+<<twoby2plot,echo=FALSE, warning=FALSE,error = FALSE, message=FALSE,fig.height=3,fig.width=6>>=
+dat.select <- dat[-which(is.na(dat$Education)|
+                           is.na(dat$three_five)),]
+edu3to5_tab <- table(dat.select$Education,dat.select$three_five)
+edu3to5_tab<- as.numeric(edu3to5_tab)
+
+names(edu3to5_tab) <- c("nn","notwork","notedu","yy")
+
+twoby1 <- ggplot(dat.select, aes(x=Education,y=three_five,col=Education))+
+  geom_jitter(width = 0.3, height = 0.3)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())+
+  theme(legend.position="bottom",
+        legend.text = element_text(size = 10),
+        legend.title=element_blank())+
+  labs(y="Post work status")+
+  geom_text(x=2, y=0.5, label=edu3to5_tab["notwork"],size=5,col=1)+
+  geom_text(x=2, y=2.5, label=edu3to5_tab["yy"],size=5,col=1)+
+  geom_text(x=1, y=0.5, label=edu3to5_tab["nn"],size=5,col=1)+
+  geom_text(x=1, y=2.5, label=edu3to5_tab["notedu"],size=5,col=1)
+
+
+
+dat.select2 <- dat[-which(is.na(dat$Employment)|
+                            is.na(dat$three_five)),]
+
+emp3to5_tab <- table(dat.select2$Employment,
+                     dat.select2$three_five)
+emp3to5_tab<- as.numeric(emp3to5_tab)
+
+names(emp3to5_tab) <- c("nn","notwork","notemp","yy")
+
+
+twoby2 <- ggplot(dat.select2 ,labels=FALSE, 
+                 aes(x=Employment,y=three_five,col=Employment))+
+  geom_jitter(width = 0.3, height = 0.3)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.title.y=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+  )+
+    geom_text(x=2, y=0.5, label=emp3to5_tab["notwork"],size=5,col=1)+
+  geom_text(x=2, y=2.5, label=emp3to5_tab["yy"],size=5,col=1)+
+  geom_text(x=1, y=0.5, label=emp3to5_tab["nn"],size=5,col=1)+
+  geom_text(x=1, y=2.5, label=emp3to5_tab["notemp"],size=5,col=1)+
+  
+  theme(legend.position="bottom",
+        legend.text = element_text(size = 10),
+        legend.title=element_blank())
+table(dat.select2$Employment,dat.select$three_five)
+ggarrange(twoby1,twoby2)
+@
+\caption{Work status with respect to Pre-employment and Education for three to five year after LTx}\label{fig9}
+\end{figure}
+
+
+There are some extreme cases as shown in figure \ref{fig9}. We could not analysis the association between \textit{Education} and \textit{Pre-employment},
+no academic-educated or pre-employed not working three to five years after transplantation.
+
+It shows association between those two factors, \textit{Education} and \textit{Pre-employment} and the post-transplantation work status during this time period.
+
+From the univariate models in \ref{tab:tab10}, it is clear that, in spite of \textit{Education} and \textit{Pre-employment}, odds ratio for any of those factor are not far from 1, indicating not very strong effect on the work status.
+
+Since we would do further analyses, we do not choose any kind of correction ways to do regress for work status for those time periods.
+
+<<logreg3,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+bic.3 <- rep(NA,8)
+AUC.3 <- rep(NA,8)
+fml.3 <- rep(NA,8)
+pv.3 <- rep(NA,8)
+dat.choice4 <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                           | is.na(dat$Education) | is.na(dat$Relationship)
+                           | is.na(dat$Living) | is.na(dat$Age)
+                           | is.na(dat$BMI) | is.na(dat$X6MWD)
+                           | is.na(dat$FEV1) | is.na(dat$three_five)
+                           | is.na(dat$Waiting_time)),]
+
+name_var_long5=c("Age","FEV1","BMI","Living",
+           "Relationship","Sex","X6MWD",
+           "Waiting_time","less_one","one_three",
+           "three_five","five_ten","longer_ten")
+for(i in 1:8){
+  fml.3[i] = paste(name_var_long5[11],"~",name_var_long5[i],sep="")
+  reg=glm(fml.3[i],family=binomial,data=dat.choice4)
+  pred <- predict(reg,type="response")
+  bic.3[i] <- round(BIC(reg),4)
+  roc.3 <- pROC::roc(dat.choice4$longer_ten ~ pred)
+  AUC.3[i] <- round(pROC::auc(roc.3),4)
+}
+auc.3 <- round(AUC.3,digits = 2)
+bic.3 <- round(bic.3,digits = 2)
+#univariates models
+df <- matrix(0,nrow=8,ncol=3)
+for(i in 1:8){
+  fml.3[i] = paste(name_var_long5[11],"~",name_var_long5[i],sep="")
+  reg=glm(fml.3[i],family=binomial,data=dat)
+  pv.3[i]<-formatPval(summary(reg)$coefficients[2,4])
+  df[i,] <- c(exp(coef(reg)[2]),exp(confint(reg)[2,]))
+}
+
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv.3,auc.3,bic.3)
+
+tab_rowname_long5 <- c("Age", "Best FEV1(\\%)","BMI",
+                           "Living(Alone)",
+                           "Relationship(Single)", 
+                           "Sex(Male)",
+                           "6MWD","Waiting time"  )
+colnames(df) <- tab_colname
+rownames(df) <- tab_rowname_long5
+df_tab <- xtable(df,digits = 2,
+                 caption="Univariate models for work status three to five years after LTx",
+                 label="tab:tab10")
+print(df_tab, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+
+\clearpage
+
+% =======================================
+\subsubsection*{Post-transplantation work status five to ten years} \label{subsubsec:logis4}
+% =======================================
+<<logreg4,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+dat.choice3 <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                           | is.na(dat$Education) | is.na(dat$Relationship)
+                           | is.na(dat$Living) | is.na(dat$Age)
+                           | is.na(dat$BMI) | is.na(dat$X6MWD)
+                           | is.na(dat$FEV1) | is.na(dat$five_ten)
+                           | is.na(dat$Waiting_time)),]
+
+#dim(dat.choice3)
+#table(dat$five_ten)
+#table(dat.choice3$five_ten)
+
+for(i in 1:10){
+  fml[i] = paste(name_var[14],"~",name_var[i],sep="")
+  reg=glm(fml[i],family=binomial,data=dat.choice3)
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),4)
+  roc <- pROC::roc(dat.choice3$five_ten ~ pred)
+  AUC[i] <- round(pROC::auc(roc),4)
+}
+auc <- round(AUC,digits = 2)
+bic <- round(bic,digits = 2)
+#univariates models
+df <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var[14],"~",name_var[i],sep="")
+  reg=glm(fml[i],family=binomial,data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+  df[i,] <- c(exp(coef(reg)[2]),exp(confint(reg)[2,]))
+}
+
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv,auc,bic)
+colnames(df)<- tab_colname
+rownames(df) <- tab_rowname
+df_tab <- xtable(df,digits = 2,
+                 caption="Univariate models for work status five to ten years after LTx")
+print(df_tab, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+
+
+<<logsel3,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+reg1=glm(five_ten ~ Education+ Employment,family=binomial,data=dat.choice2)
+reg0=glm(five_ten ~ Employment,family=binomial,data=dat.choice2)
+tab1 <- t(data.frame(BIC(reg0),BIC(reg1)))
+rownames(tab1) <- c("Pre-employment","Pre-employment+Education")
+colnames(tab1) <- c("BIC")
+tab1_tab <- xtable(tab1,digits = 2,
+                   caption = "Model selection for 
+                   work status five to ten years after LTx",
+                   label = "tab:tab11")
+print(tab1_tab, scalebox=0.8, caption.placement = "top")
+@
+
+
+<<logresult3,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+final3 <- glm(five_ten ~ Employment+ Education,family=binomial,data=dat)
+tableRegression(final3,
+                stats = c("exp.estimate",  "ci.95", "p.value"),
+                caption="Selected model for work status 
+                five to ten years after LTx",
+                caption.placement="top",
+                row.nam = c("Pre-employment(Employed)","Education(Academic)"),label = "tab:tab12")
+@
+
+
+
+For time period three to five years after lung transplantation, there are \Sexpr{as.numeric(as.matrix(table(dat$five_ten))["not work",1])} patients did not work and \Sexpr{as.numeric(as.matrix(table(dat$five_ten))["work",1])} worked.
+We took at most 2 predictors into consideration for selected model. It is very obvious that \textit{Education} and \textit{Pre-employment} are the two possible predictors for selected model, as the univariate models for those two show much more strong effect on post-transplantation work status than other factors.
+
+From table \ref{tab:tab11} and \ref{tab:tab12}, we determine \textit{Pre-employment} and \textit{Education} as the predictors for the work status five to ten years after lung transplantation. The evidence for those two predictors are strong for \textit{Pre-employment} and moderate for \textit{Education}.
+
+\clearpage
+% =======================================
+\subsubsection*{Post-transplantation work status longer than ten years} \label{subsubsec:logis3}
+% =======================================
+\begin{figure}[ht]
+<<twoby2plot2,echo=FALSE, warning=FALSE,error = FALSE, message=FALSE,fig.height=3,fig.width=6>>=
+dat.select <- dat[-which(is.na(dat$Education)|
+                           is.na(dat$longer_ten)),]
+edu10_tab <- table(dat.select$Education,
+                     dat.select$longer_ten)
+edu10_tab<- as.numeric(edu10_tab)
+
+names(edu10_tab) <- c("nn","notwork","notedu","yy")
+
+
+twoby1 <- ggplot(dat.select, aes(x=Education,y=longer_ten,col=Education))+
+  #scale_color_manual(values=rhg_cols1)+
+  #	geom_point()+
+  geom_jitter(width = 0.3, height = 0.3)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())+
+  theme(legend.position="bottom",
+        legend.text = element_text(size = 10),legend.title=element_blank())+
+  labs(y="Post work status")+
+  geom_text(x=2, y=0.5, label=edu10_tab["notwork"],size=5,col=1)+
+  geom_text(x=2, y=2.5, label=edu10_tab["yy"],size=5,col=1)+
+  geom_text(x=1, y=0.5, label=edu10_tab["nn"],size=5,col=1)+
+  geom_text(x=1, y=2.5, label=edu10_tab["notedu"],size=5,col=1)
+  
+
+dat.select2 <- dat[-which(is.na(dat$Employment)|
+                            is.na(dat$longer_ten)),]
+
+emp10_tab <- table(dat.select2$Employment,
+                     dat.select2$longer_ten)
+emp10_tab<- as.numeric(emp10_tab)
+
+names(emp10_tab) <- c("nn","notwork","notemp","yy")
+
+twoby2 <- ggplot(dat.select2 ,labels=FALSE, 
+                 aes(x=Employment,y=longer_ten,col=Employment))+
+  #	geom_point()+
+  geom_jitter(width = 0.3, height = 0.3)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.title.y=element_blank(),
+    #  	axis.ticks.y=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+    #  	axis.text.y=element_blank(),
+  )+
+  #  labs(y="Post work status")+
+   geom_text(x=2, y=0.5, label=emp10_tab["notwork"],size=5,col=1)+
+  geom_text(x=2, y=2.5, label=emp10_tab["yy"],size=5,col=1)+
+  geom_text(x=1, y=0.5, label=emp10_tab["nn"],size=5,col=1)+
+  geom_text(x=1, y=2.5, label=emp10_tab["notemp"],size=5,col=1)+
+  theme(legend.position="bottom",
+        legend.text = element_text(size = 10),
+        legend.title=element_blank())
+#table(dat.select2$Employment,dat.select$longer_ten)
+ggarrange(twoby1,twoby2)
+@
+\caption{Work status with respect to Pre-employment and Education for longer than ten years after LTx}\label{fig10}
+\end{figure}
+
+
+<<logreg5,echo=FALSE,warning=FALSE,results='asis',message=F>>=
+bic.5 <- rep(NA,8)
+AUC.5 <- rep(NA,8)
+fml.5 <- rep(NA,8)
+pv.5 <- rep(NA,8)
+dat.choice5 <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                           | is.na(dat$Education) | is.na(dat$Relationship)
+                           | is.na(dat$Living) | is.na(dat$Age)
+                           | is.na(dat$BMI) | is.na(dat$X6MWD)
+                           | is.na(dat$FEV1) | is.na(dat$longer_ten)
+                           | is.na(dat$Waiting_time)),]
+
+name_var_long10=c("Age","FEV1","BMI","Living",
+           "Relationship","Sex","X6MWD",
+           "Waiting_time","less_one","one_three",
+           "three_five","five_ten","longer_ten")
+for(i in 1:8){
+  fml.5[i] = paste(name_var_long10[13],"~",name_var_long10[i],sep="")
+  reg=glm(fml.5[i],family=binomial,data=dat.choice5)
+  pred <- predict(reg,type="response")
+  bic.5[i] <- round(BIC(reg),4)
+  roc.5 <- pROC::roc(dat.choice5$longer_ten ~ pred)
+  AUC.5[i] <- round(pROC::auc(roc.5),4)
+}
+auc.5 <- round(AUC.5,digits = 2)
+bic.5 <- round(bic.5,digits = 2)
+#univariates models
+df <- matrix(0,nrow=8,ncol=3)
+for(i in 1:8){
+  fml.5[i] = paste(name_var_long10[13],"~",name_var_long10[i],sep="")
+  reg=glm(fml.5[i],family=binomial,data=dat)
+  pv.5[i]<-formatPval(summary(reg)$coefficients[2,4])
+  df[i,] <- c(exp(coef(reg)[2]),exp(confint(reg)[2,]))
+}
+
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv.5,auc.5,bic.5)
+
+tab_rowname_long10 <- c("Age", "Best FEV1(\\%)","BMI",
+                           "Living(Alone)",
+                           "Relationship(Single)", 
+                           "Sex(Male)",
+                           "6MWD","Waiting time"  )
+colnames(df) <- tab_colname
+rownames(df) <- tab_rowname_long10
+df_tab <- xtable(df,digits = 2,
+                 caption="Univariate models for work status
+                 longer than ten years after LTx",
+                 label="tab:tabadd")
+print(df_tab, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+Similarly to the time period three to five years after lung transplantation, In figure \ref{fig10}, there were few cases for academic-educated and pre-employed patients not working after transplantation. 
+
+We did not analyse the association between \textit{Education}, \textit{Pre-employment} and work status after transplantation. 
+
+From the univariate models in \ref{tab:tabadd}, it is clear that, those factors, in spite of \textit{Education} and \textit{Pre-employment}, do not have very strong effect on the outcome.
+
+
+\clearpage
+
+% =======================================
+\subsubsection*{Post-transplantation work status for all time periods} \label{subsubsec:logis_all}
+
+<<log_all, message=FALSE,error=FALSE,results='asis'>>=
+fit_1 <- glm(less_one ~ Employment,family=binomial,data=dat)
+fit_2 <- glm(one_three ~ Employment +Education,family=binomial,data=dat)
+fit_4 <- glm(five_ten ~ Employment +Education,family=binomial,data=dat)
+
+OR1 <- rbind( 
+              sprintf("%.2f",exp(coef(fit_1)[2])),
+              sprintf("%.2f",exp(coef(fit_2)[2])),
+              sprintf("%.2f",exp(coef(fit_4)[2])) )
+
+CI1 <- rbind(formatCI(exp(confint(fit_1)[2,]),text = "english"),
+             formatCI(exp(confint(fit_2)[2,]),text = "english"),
+             formatCI(exp(confint(fit_4)[2,]),text = "english"))
+
+OR2 <- rbind( 
+  sprintf("%.2f",exp(coef(fit_2)[3])),
+  sprintf("%.2f",exp(coef(fit_4)[3])))
+
+OR2 <- rbind("-",OR2)
+
+CI2 <- rbind(formatCI(exp(confint(fit_2)[3,]),text = "english"),
+             formatCI(exp(confint(fit_4)[3,]),text = "english"))
+CI2 <- rbind("-",CI2)
+
+p1 <- rbind(
+  biostatUZH::formatPval(summary(fit_1)$coefficients[2,4]),
+  biostatUZH::formatPval(summary(fit_2)$coefficients[2,4]),
+  biostatUZH::formatPval(summary(fit_4)$coefficients[2,4]))
+p2<- rbind(
+  "-",
+  biostatUZH::formatPval(summary(fit_2)$coefficients[3,4]),
+  biostatUZH::formatPval(summary(fit_4)$coefficients[3,4]))
+
+p <- rbind(p1,p2)
+
+mat_all_logistic <- cbind(rbind(OR1,OR2),rbind(CI1,CI2),p)
+colnames(mat_all_logistic) <- c("Odds Ratio", 
+                                "$95\\%$-confidence interval",
+                                "$p$-value")
+rownames(mat_all_logistic) <- c("Pre-employment(<1)",
+                                "Pre-employment(1-3)",
+                                "Pre-employment(5-10)",
+                                "","Education(3-5)",
+                                "Education(5-10)")
+
+log_Tab <- xtable(mat_all_logistic,
+                  caption="Result for logistic regression 
+                  for all possible periods after LTx",
+                  label="tab:tab13")
+print(log_Tab, scalebox=0.8, caption.placement = "top",sanitize.text.function = function(x) {x})
+@
+
+
+Table \ref{tab:tab13} showed all of the results of logistic regression for three time periods, within one year, one to three year and five to ten years after transplantation. 
+
+There are two possible predictors for post-transplantation work status. \textit{Pre-employment} is the dominant one with very strong or strong of evidence. \textit{Education} is another predictor with moderate evidence for association with the work status after lung transplantation. 
+
+The width of 95\% confidence intervals for both predictors increased with time, due to more and more loss to follow-up with time. 
+
+
+\clearpage
+% =======================================
+\subsection*{Linear regression for post-transplantation work percentage} \label{subsec:linear}
+% =======================================
+\vspace*{0.5cm}
+% =======================================
+\subsubsection*{Post-transplantation work percentage within one year} \label{subsubsection:linear1}
+% =======================================
+
+<<lmsetup,echo=FALSE,warning=FALSE,results=FALSE>>=
+dat.choice.a  <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                          | is.na(dat$Education) | is.na(dat$Relationship)
+                          | is.na(dat$Living) | is.na(dat$Age)
+                          | is.na(dat$BMI) | is.na(dat$X6MWD)
+                          | is.na(dat$FEV1) | is.na(dat$less_one_perc)
+                          | is.na(dat$Waiting_time)),]
+  
+dim(dat.choice.a)
+name_var2 <- c("Age","FEV1","BMI","Education","Living",
+               "Employment","Relationship","Sex","X6MWD",
+               "Waiting_time","less_one_perc","one_three_perc",
+               "three_five_perc","five_ten_perc","longer_ten_perc")
+@
+
+
+<<lmreg1,echo=FALSE,warning=FALSE,results='asis'>>=
+bic <- rep(NA,10)
+pv <- rep(NA,10)
+for(i in 1:10){
+  fml[i] = paste(name_var2[11],"~",name_var2[i],sep="")
+  reg=lm(fml[i], data=dat.choice.a)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+  bic[i] <- round(BIC(reg),4)
+}
+bic <- round(bic,digits = 2)
+
+df <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var2[11],"~",name_var2[i],sep="")
+  reg=lm(fml[i],data=dat)
+df[i,] <- c( (coef(reg)[2]), (confint(reg)[2,]))
+}
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv,bic)
+tab_colname2 <- c("Coefficient", "$95\\%$-confidence interval", "$p$-value", "BIC")
+colnames(df)<- tab_colname2
+rownames(df) <- c("Age","Best FEV1(\\%)","BMI","Education(Academic)",
+                  "Living(Alone)","Pre-employment(Employed)",
+                  "Relationship(Single)","Sex(Male)","6MWD","Waiting time")
+res.table<-xtable(df, 
+                  caption = 'Univariate models for work percentage 
+                  less than one year after LTx', 
+                  table.placement ="",
+                  label="tab:tab14")
+print(res.table, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+
+<<lmsel1,echo=FALSE,warning=FALSE,results='asis'>>=
+reg0=lm(less_one_perc ~ Employment,data=dat.choice.a)
+
+reg1=lm(less_one_perc ~ Education+ Living+Employment,data=dat.choice.a)
+
+reg2=lm(less_one_perc ~ Living+Employment,data=dat.choice.a)
+
+reg3=lm(less_one_perc ~ Education+Employment,data=dat.choice.a)
+
+tab1 <- t(data.frame(BIC(reg1),BIC(reg3),BIC(reg2),BIC(reg0)))
+rownames(tab1) <- c("Pre-employment+Living+Education",
+                    "Pre-employment+Education","Pre-employment+Living",
+                    "Pre-employment")
+colnames(tab1) <- c("BIC")
+tab1 <- xtable(tab1,
+               caption = "Model selection for 
+               work percentage less than one year after LTx",
+               label="tab:tab15")
+print(tab1, scalebox=0.8, caption.placement = "top")
+
+@
+
+
+<<lmresult1,echo=FALSE,results='asis',warning=FALSE,message=F>>=
+final.1  <- lm(less_one_perc ~ Employment,data=dat)
+tableRegression(final.1,intercept = F,
+                caption="Selected model for work percentage
+                one to three years after LTx",
+                caption.placement="top",
+                row.nam = "Pre-employment(Employed)")
+@
+
+For those univariate models for linear regression for work percentage, we choose \textit{Pre-employment}, \textit{Living}, \textit{Education} for model selection, since those three seem to have much more strong effect on the outcome than the others from the coefficients from table \ref{tab:tab14}.
+
+After model selection based on BIC, we determined \textit{pre-employment} as the predictor for work percentage one year after lung transplantation. Form the $p$-value in the table \ref{tab:tab15}, we can also see strong evidence for this predictor.
+
+\clearpage
+% =======================================
+\subsubsection*{Post-transplantation work percentage one to three years} \label{subsubsection:linear2}
+% =======================================
+<<lmreg2,echo=FALSE,warning=FALSE,results='asis'>>=
+dat.choice.b  <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                          | is.na(dat$Education) | is.na(dat$Relationship)
+                          | is.na(dat$Living) | is.na(dat$Age)
+                          | is.na(dat$BMI) | is.na(dat$X6MWD)
+                          | is.na(dat$FEV1) | is.na(dat$one_three_perc)
+                          | is.na(dat$Waiting_time)),]
+
+for(i in 1:10){
+  fml[i] = paste(name_var2[12],"~",name_var2[i],sep="")
+  reg=lm(fml[i], data=dat.choice.b)
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),4)
+}
+bic <- round(bic,digits = 2)
+
+df <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var2[12],"~",name_var2[i],sep="")
+  reg=lm(fml[i],data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+df[i,] <- c( (coef(reg)[2]), (confint(reg)[2,]))
+}
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv,bic)
+colnames(df)<- tab_colname2
+rownames(df) <- c("Age","Best FEV1(\\%)","BMI","Education(Academic)",
+                  "Living(Alone)","Pre-employment(Employed)",
+                  "Relationship(Single)",
+                  "Sex(Male)","6MWD","Waiting time")
+res.table<-xtable(df, table.placement ="",
+                  caption = 
+                    'Univariate models for work percentage 
+                  one to three years after LTx')
+print(res.table, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+
+<<lmsel2,echo=FALSE,warning=FALSE,results='asis'>>=
+reg0=lm(one_three_perc ~ Employment,data=dat.choice.b)
+
+reg1=lm(one_three_perc ~ Education+ Living+Employment,data=dat.choice.b)
+
+reg2=lm(one_three_perc ~ Living+Employment,data=dat.choice.b)
+
+reg3=lm(one_three_perc ~ Education+Employment,data=dat.choice.b)
+
+tab1 <- t(data.frame(BIC(reg3),BIC(reg1),BIC(reg2),BIC(reg0)))
+rownames(tab1) <- c("Pre-employment+Education",
+                    "Pre-employment+Living+Education",
+                    "Pre-employment+Living","Pre-employment")
+colnames(tab1) <- c("BIC")
+tab1 <- xtable(tab1,
+               caption = 
+                 "Model selection for work percentage 
+               one to three years after LTx")
+print(tab1, scalebox=0.8, caption.placement = "top")
+
+@
+
+
+<<lmresult2,echo=FALSE,results='asis',warning=FALSE,message=F>>=
+final.2  <- lm(one_three_perc ~ Employment,data=dat)
+tableRegression(final.2,intercept = F,
+                caption=
+                  "Selected model for work percentage one to three years after LTx",
+                caption.placement="top",row.nam = "Pre-employment(Employed)",
+                label="tab:tab19")
+@
+
+The possible predictors for work percentage one to three years after lung transplantation, are \textit{Pre-employment}, \textit{Living} and \textit{Education.} Although the model with \textit{Pre-employment} and \textit{Education} as the predictors have the smallest BIC, we would also choose the model with only \textit{Pre-employment} as the predictor. Since the difference between these two model is smaller than 2, and we would like to choose the one with smaller number of predictors.
+
+$P$-value in table \ref{tab:tab19} also showed strong evidence for \textit{Pre-employment} as a predictor, but the 95\% confidence interval is wider than before due to smaller sample size.
+
+\clearpage
+% =======================================
+\subsubsection*{Post-transplantation work percentage three to five years} \label{subsubsection:linear3}
+% =======================================
+<<lmreg3,echo=FALSE,warning=FALSE,results='asis'>>=
+dat.choice.c <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                          | is.na(dat$Education) | is.na(dat$Relationship)
+                          | is.na(dat$Living) | is.na(dat$Age)
+                          | is.na(dat$BMI) | is.na(dat$X6MWD)
+                          | is.na(dat$FEV1) | is.na(dat$three_five_perc)
+                          | is.na(dat$Waiting_time)),]
+
+for(i in 1:10){
+  fml[i] = paste(name_var2[13],"~",name_var2[i],sep="")
+  reg=lm(fml[i], data=dat.choice.c)
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),4)
+}
+bic <- sprintf("%.2f",bic)
+
+df <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var2[13],"~",name_var2[i],sep="")
+  reg=lm(fml[i],data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+df[i,] <- c( (coef(reg)[2]), (confint(reg)[2,]))
+}
+df <- cbind(sprintf("%.2f",df[,1]),formatCI(df[,c(2:3)],text = "english"),pv,bic)
+colnames(df)<- tab_colname2
+rownames(df) <- c("Age","Best FEV1(\\%)","BMI","Education(Academic)",
+                  "Living(Alone)","Pre-employment(Employed)",
+                  "Relationship(Single)",
+                  "Sex(Male)","6MWD","Waiting time")
+res.table<-xtable(df, table.placement ="",
+                  caption = 
+                    'Univariate models for work percentage 
+                  three to five years after LTx')
+print(res.table, 
+      scalebox=0.8, 
+      caption.placement = "top",sanitize.text.function = function(x) {x})
+@
+
+<<lmsel3,echo=FALSE,warning=FALSE,results='asis'>>=
+reg0=lm(three_five_perc ~ Employment,data=dat.choice.c)
+
+reg1=lm(three_five_perc ~ Education+ Living+Employment,data=dat.choice.c)
+
+reg2=lm(three_five_perc ~ Living+Employment,data=dat.choice.c)
+
+reg3=lm(three_five_perc ~ Education+Employment,data=dat.choice.c)
+
+tab1 <- t(data.frame(BIC(reg1),BIC(reg3),BIC(reg2),BIC(reg0)))
+rownames(tab1) <- c("Pre-employment+Living+Education",
+                    "Pre-employment+Education",
+                    "Pre-employment+Living","Pre-employment")
+colnames(tab1) <- c("BIC")
+tab1 <- xtable(tab1,caption = 
+                 "Model selection for work percentage three to five years after LTx")
+print(tab1, scalebox=0.8, caption.placement = "top")
+
+@
+
+<<lmresult3,echo=FALSE,results='asis',warning=FALSE,message=FALSE>>=
+final.3  <- lm(three_five_perc ~ Employment,data=dat)
+tableRegression(final.3,intercept = F,caption=
+                  "Selected model for work status three to five years after LTx",
+                caption.placement="top",row.nam = "Pre-employment(Employed)")
+@
+
+For work percentage three to five years after lung transplantation, model with only \textit{Pre-employment} has the lowest BIC. The evidence for the association between \textit{Pre-employment} and work percentage is very strong during this time period. 
+
+\clearpage
+% =======================================
+\subsubsection*{Post-transplantation work percentage five to ten years} \label{subsubsection:linear4}
+% =======================================
+
+<<lmreg4,echo=FALSE,results='asis',warning=FALSE,error=FALSE>>=
+dat.choice.d <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                          | is.na(dat$Education) | is.na(dat$Relationship)
+                          | is.na(dat$Living) | is.na(dat$Age)
+                          | is.na(dat$BMI) | is.na(dat$X6MWD)
+                          | is.na(dat$FEV1) | is.na(dat$five_ten_perc)
+                          | is.na(dat$Waiting_time)),]
+
+for(i in 1:10){
+  fml[i] = paste(name_var2[14],"~",name_var2[i],sep="")
+  reg=lm(fml[i], data=dat.choice.d)
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),2)
+}
+
+df <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var2[14],"~",name_var2[i],sep="")
+  reg=lm(fml[i],data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+df[i,] <- c( (coef(reg)[2]), (confint(reg)[2,]))
+}
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv,bic)
+colnames(df)<-tab_colname2
+rownames(df) <- c("Age","Best FEV1(\\%)","BMI","Education(Academic)",
+                  "Living(Alone)","Pre-employment(Employed)","Relationship(Single)",
+                  "Sex(Male)","6MWD","Waiting time")
+res.table<-xtable(df, caption = 
+                    'Univariate models for work percentage 
+                  five to ten years after LTx', 
+                  table.placement ="")
+print(res.table, scalebox=0.8, 
+      caption.placement = "top",
+      sanitize.text.function = function(x) {x})
+@
+
+
+<<lmsel4,echo=FALSE,warning=FALSE,results='asis',error=FALSE>>=
+reg0=lm(five_ten_perc ~ Employment,data=dat.choice.d)
+
+reg1=lm(five_ten_perc ~ Education+ Living+Employment,data=dat.choice.d)
+
+reg2=lm(five_ten_perc ~ Living+Employment,data=dat.choice.d)
+
+reg3=lm(five_ten_perc ~ Education+Employment,data=dat.choice.d)
+
+tab1 <- t(data.frame(BIC(reg1),BIC(reg3),BIC(reg0),BIC(reg2)))
+rownames(tab1) <- c("Pre-employment+Living+Education",
+                    "Pre-employment+Education","Pre-employment",
+                    "Pre-employment+Living")
+colnames(tab1) <- c("BIC")
+tab1 <- xtable(tab1,caption = 
+                 "Model selection for work percentage 
+               five to ten years after LTx")
+print(tab1, scalebox=0.8, caption.placement = "top")
+@
+
+
+<<lmresult4,echo=FALSE,warning=FALSE,results='asis'>>=
+final.4  <- lm(five_ten_perc ~ Employment,data=dat)
+tableRegression(final.4,intercept = F,caption=
+                  "Selected model for work status five to ten years after LTx",
+                caption.placement="top",row.nam = "Pre-employment(Employed)")
+@
+
+For work percentage five to ten years after lung transplantation, model with predictors, \textit{Pre-employment} and \textit{Living}, has the lowest BIC, but the BIC for model with only \textit{Pre-employment} as the predictor, is not so much larger than this one. Therefore, the predictor we determined is \textit{Pre-employment}.
+
+\clearpage
+
+% =======================================
+\subsubsection*{Post-transplantation work percentage longer than ten year} \label{subsubsection:linear5}
+% =======================================
+
+
+
+<<lmreg5,echo=FALSE,warning=FALSE,results='asis'>>=
+dat.choice.e <- dat[-which( is.na(dat$Employment) | is.na(dat$Sex)
+                          | is.na(dat$Education) | is.na(dat$Relationship)
+                          | is.na(dat$Living) | is.na(dat$Age)
+                          | is.na(dat$BMI) | is.na(dat$X6MWD)
+                          | is.na(dat$FEV1) | is.na(dat$longer_ten_perc)
+                          | is.na(dat$Waiting_time)),]
+
+for(i in 1:10){
+  fml[i] = paste(name_var2[15],"~",name_var2[i],sep="")
+  reg=lm(fml[i], data=dat.choice.e)
+  pred <- predict(reg,type="response")
+  bic[i] <- round(BIC(reg),2)
+}
+df <- matrix(0,nrow=10,ncol=3)
+for(i in 1:10){
+  fml[i] = paste(name_var2[15],"~",name_var2[i],sep="")
+  reg=lm(fml[i],data=dat)
+  pv[i]<-formatPval(summary(reg)$coefficients[2,4])
+df[i,] <- c( (coef(reg)[2]), (confint(reg)[2,]))
+}
+df <- data.frame(round(df[,1],digits=2),formatCI(df[,c(2:3)],text = "english"),pv,bic)
+colnames(df)<-tab_colname2
+rownames(df) <- c("Age","Best FEV1(\\%)","BMI","Education(Academic)",
+                  "Living(Alone)","Pre-employment(Employed)",
+                  "Relationship(Single)","Sex(Male)","6MWD","Waiting time")
+res.table<-xtable(df, caption = 
+                    'Univariate models for work percentage longer than ten years after LTx', 
+                  table.placement ="")
+print(res.table, scalebox=0.8, 
+      caption.placement = "top",
+         sanitize.text.function = function(x) {x})
+@
+
+
+<<lmsel5,echo=FALSE,warning=FALSE,results='asis',error=FALSE>>=
+reg0=lm(longer_ten_perc ~ Employment,data=dat.choice.e)
+
+reg1=lm(longer_ten_perc ~ Education+ Living+Employment,data=dat.choice.e)
+
+reg2=lm(longer_ten_perc ~ Living+Employment,data=dat.choice.e)
+
+reg3=lm(longer_ten_perc ~ Education+Employment,data=dat.choice.e)
+
+tab1 <- t(data.frame(BIC(reg2),BIC(reg1),BIC(reg0),BIC(reg3)))
+rownames(tab1) <- c("Pre-employment+Living","Pre-employment+Living+Education",
+                    "Pre-employment","Pre-employment+Education")
+colnames(tab1) <- c("BIC")
+tab1 <- xtable(tab1,caption = 
+                 "Model selection for work percentage longer than ten years after LTx")
+print(tab1, scalebox=0.8, caption.placement = "top")
+@
+
+
+<<lmresult5,echo=FALSE,warning=FALSE,results='asis'>>=
+
+
+final.5  <- lm(longer_ten_perc ~ Employment,data=dat)
+tableRegression(final.5,intercept = F,caption=
+                  "Selected model for work status longer than ten years after LTx",
+                caption.placement="top",row.nam = "Pre-employment(Employed)")
+@
+
+Though the model with lowest value of BIC is the one with \textit{Pre-employment} and \textit{Education}, we would still determine \textit{Pre-employment} as the only predictor. The difference between values of BIC of the those two models is smaller than two, so we choose the one with smaller number of predictors.
+
+For this time period, we get the same result as the previous time periods, \textit{Pre-employment} is the predictor that we determined.
+
+\clearpage
+% =======================================
+\subsubsection*{Post-transplantation work percentage for all time periods} \label{subsubsection:linear5}
+
+
+
+
+<<lm_all, message=FALSE,error=FALSE,results='asis'>>=
+fit1 <- lm(less_one_perc ~ Employment,data=dat)
+fit2 <- lm(one_three_perc ~ Employment,data=dat)
+fit3 <- lm(three_five_perc ~ Employment,data=dat)
+fit4 <- lm(five_ten_perc ~ Employment,data=dat)
+fit5 <- lm(longer_ten_perc ~ Employment,data=dat)
+
+coeff1 <- rbind( 
+              (coef(fit1)[2]),
+              (coef(fit2)[2]),
+              (coef(fit3)[2]),
+              (coef(fit4)[2]),
+              (coef(fit5)[2])) 
+
+coeff1 <- sprintf("%.2f", coeff1)
+Conf1 <- rbind(formatCI((confint(fit1)[2,]),text = "english"),
+             formatCI((confint(fit2)[2,]),text = "english"),
+             formatCI((confint(fit3)[2,]),text = "english"),
+             formatCI((confint(fit4)[2,]),text = "english"),
+             formatCI((confint(fit5)[2,]),text = "english"))
+
+
+p <- rbind(
+  biostatUZH::formatPval(summary(fit1)$coefficients[2,4]),
+  biostatUZH::formatPval(summary(fit2)$coefficients[2,4]),
+  biostatUZH::formatPval(summary(fit3)$coefficients[2,4]),
+  biostatUZH::formatPval(summary(fit4)$coefficients[2,4]),
+  biostatUZH::formatPval(summary(fit5)$coefficients[2,4]))
+
+
+
+mat_all_linear <- cbind(coeff1,Conf1,p)
+colnames(mat_all_linear) <- c("Coefficients",
+                              "$95\\%$-confidence interval",
+                              "$p$-value")
+rownames(mat_all_linear) <- c("Pre-employment(<1)",
+                              "Pre-employment(1-3)",
+                              "Pre-employment(3-5)",
+                              "Pre-employment(5-10)",
+                              "Pre-employment(>10)")
+
+linear_Tab <- xtable(mat_all_linear,
+                     caption="Result for linear regression  for periods after LTx",
+                     label="tab:tab29")
+print(linear_Tab, 
+      scalebox=0.8, 
+      caption.placement = "top",sanitize.text.function = function(x) {x})
+@
+
+From table \ref{tab:tab29}, we get the conclusion that, results for work percentage for all time periods are consistent. \textit{Pre-employment} is the only predictor that we determined for work percentage after lung transplantation. The evidence is very strong for the fist three time periods and relatively weaker for the last time period. 95\% confidence interval also gets wider and wider.
+
+
+
+\clearpage
+% =======================================
+\subsection*{Longitudinal data analysis for post-transplantation work status} \label{subsec:LDA}
+% =======================================
+The aim of our study is to evaluate the long-term work participation after lung transplantation. In an attempt to take time, time-varying variables and repeated measurements of outcomes into one model, we did the longitudinal data analysis.
+
+\begin{figure}[ht]
+\centering
+<<number_measurements,fig.height=5,fig.width=5,echo=FALSE>>=
+sum(is.na(duration))#4 NA
+dat.dura <- cbind(dat,duration)
+patient_longerten <- dat.dura[which(duration>10),c("ind","duration")]
+#28 patients who end at the time period 5.
+patient_longerfive <- dat.dura[which((duration>5)&(duration<10)),c("ind","duration")]
+#19 patients who end at the time period 4.
+patient_longerthree <- dat.dura[which((duration>3)&(duration<5)),c("ind","duration")]
+#15 patients who end at the time period 3
+patient_longerone <- dat.dura[which((duration>1)&(duration<3)),c("ind","duration")]
+#23 patients who end at the time period 2
+patient_withinone <- dat.dura[which((duration<1)&(duration>0)),c("ind","duration")]
+#6 patients who end at the time period 2
+time_periods <- c(nrow(patient_longerten),
+        nrow(patient_longerfive),
+        nrow(patient_longerthree),
+        nrow(patient_longerone),
+        nrow(patient_withinone))
+names(time_periods) <- c(5,4,3,2,1)
+tb_bar <- barplot(time_periods,ylim=c(0,35),
+                  ylab  = "Number of patients",
+                  xlab="Number of measurements")
+text(x = tb_bar, y = time_periods, label = time_periods, pos = 3, cex = 0.8, col = "black")
+@
+\caption{The number of patients corresponding to number of measurements}\label{fig:fig13}
+\end{figure}
+ 
+From figure \ref{fig:fig13}, we can see the number of repeated measurements are different for different patients. Since the time they got the lung transplantation are different, the study period for each patient are different. There are \Sexpr{nrow(patient_longerten)} patients, undergoing lung transplantation very early and have measurements for all five time points. \Sexpr{nrow(patient_withinone)} patients got the lung transplantation too late, we only had access to their measurements of work participation and the possible post-transplantation rejections and complications at the end of the study.
+
+Based on those repeated measurements and the exact time for each patient, we got the long-format data. From the results from the previous results from linear regression and logistic regression for separate time points, we would be able to construct mixed-effects models for work status and work percentage after lung transplantation.
+
+
+% =======================================
+\subsubsection*{Generalized linear mixed effect model for work status after LTx}\label{subsubsec:GLMM}
+% =======================================
+From the results of logistic model, there are two possible predictors for the work  status after lung transplantation, \textit{Pre-employment} and \textit{Education}. We select model for longitudinal data analysis based on the result and three transformation of Time.
+
+There a great number of ways to transform time, we chose the most common ones, log(Time), Time and $\mathrm{Time}^2$ , we selected the form of transformation with the lowest BIC.
+
+
+
+
+<<timetrans,echo=FALSE,results='asis',warning=FALSE,error=FALSE>>=
+
+dat <- longformat
+dat$ind <- factor(dat$ind)
+dat0 <- dat[-which(is.na(dat$Education)|
+                     is.na(dat$Workstatus)|
+                     is.na(dat$Employment)),]
+
+reg0 <- glm(Workstatus ~ log(Time) + Employment +Education,data=dat0,family="binomial")
+reg1 <- glm(Workstatus ~ (Time) + Employment +Education,data=dat0,family="binomial")
+reg2 <- glm(Workstatus ~ I(Time^2) + Employment +Education,data=dat0,family="binomial")
+bic1 <- BIC(reg0)
+bic2 <- BIC(reg1)
+bic3 <- BIC(reg2)
+Mwith2 <- c(bic1,bic2,bic3)
+
+reg.0 <- glm(Workstatus ~ log(Time) + Employment ,data=dat0,family="binomial")
+reg.1 <- glm(Workstatus ~ (Time) + Employment ,data=dat0,family="binomial")
+reg.2 <- glm(Workstatus ~ I(Time^2) + Employment ,data=dat0,family="binomial")
+bic4 <- BIC(reg.0)
+bic5 <- BIC(reg.1)
+bic6 <- BIC(reg.2)
+Mwith1 <- c(bic4,bic5,bic6)
+
+bicdf.log <- data.frame(Mwith1,Mwith2)
+colnames(bicdf.log) <- c("Pre-employment","Education + Pre-employment")
+rownames(bicdf.log) <- c("log(Time)","Time","$(\\mathrm{Time})^2$")
+bicdf.log <- xtable(bicdf.log,caption=
+                      "Time transformation for work status after LTx based on BIC",label="tab:tab30")
+print(bicdf.log,
+      caption.placement="top",
+      sanitize.text.function = function(x) {x})
+@
+
+Table \ref{tab:tab30} shows that we would choose log(Time) as the transformation for time. Both of the time-independent factors, \textit{Pre-employment} and \textit{Education} would go into our model for generalized linear mixed-effects model. 
+
+<<timeind,echo=FALSE,results='asis',warning=FALSE>>=
+dat.sel <- dat[-which(is.na(dat$Education)|
+                        is.na(dat$Workstatus)|
+                        is.na(dat$Employment)|
+                        is.na(dat$CLAD)|
+                        is.na(dat$Cancer)|
+                        is.na(dat$Kidney_Dialysis)),]
+reg1 <- glm(Workstatus ~ log(Time) + Employment+Education
+             +CLAD
+             +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel,family="binomial")
+r1 <- c(1,1,1)
+
+reg2 <- glm(Workstatus ~ log(Time) + Employment+Education
+            # +CLAD
+             +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel,family="binomial")
+r2 <- c(0,1,1)
+
+reg3 <- glm(Workstatus ~ log(Time) + Employment+Education
+             +CLAD
+            # +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel,family="binomial")
+r3 <- c(1,0,1)
+
+reg4 <- glm(Workstatus ~ log(Time) + Employment+Education
+             +CLAD
+             +Cancer
+             #+Kidney_Dialysis
+             ,data=dat.sel,family="binomial")
+r4 <- c(1,1,0)
+
+reg5 <- glm(Workstatus ~ log(Time) + Employment+Education
+           #  +CLAD
+            # +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel,family="binomial")
+r5 <- c(0,0,1)
+
+reg6<- glm(Workstatus ~ log(Time) + Employment+Education
+             +CLAD
+            # +Cancer
+            # +Kidney_Dialysis
+           ,
+             data=dat.sel,family="binomial")
+r6 <- c(1,0,0)
+reg7<- glm(Workstatus ~ log(Time) + Employment+Education
+            # +CLAD
+             +Cancer
+             #+Kidney_Dialysis
+           ,
+             data=dat.sel,family="binomial")
+r7 <- c(0,1,0)
+df <- data.frame(r1,r2,r3,r4,r5,r6,r7)
+bicdf.linear <- c(BIC(reg1),BIC(reg2),BIC(reg3),BIC(reg4),BIC(reg5),BIC(reg6),
+                  BIC(reg7))
+df <- rbind(df,bicdf.linear)
+rownames(df) <- c("CLAD","Cancer","Kidney-Dialysis","BIC")
+df <- t(df)
+df <- df[order(df[,"BIC"]),]
+rownames(df) <- c("Model 1","Model 2","Model 3",
+                  "Model 4","Model 5","Model 6","Model 7")
+df.table<-xtable(df, caption = 
+                   'Model selection for work status based on Time-dependent factors', 
+                 digits=c(0,0,0,0,2),
+                        table.placement ="")
+print(df.table, scalebox=0.8, caption.placement = "top")
+@
+
+
+From table \ref{tab:tab32}, among all those three time-dependent factors, we chose \textit{CLAD} as the only predictor for our model, and Time variable is transformed into as log(Time).
+
+
+
+
+<<GLMMtab,echo=FALSE,warning=FALSE,error=FALSE,results='asis',message=FALSE>>=
+dat.long <- longformat
+fit_GLMM <- glmer(Workstatus ~ Employment + Education  + (1|ind) + CLAD + log(Time) ,
+                data=dat.long, family="binomial")
+
+OR_GLMM <- exp(summary(fit_GLMM)$coefficients[,1])[-1]
+test <- confint(fit_GLMM)
+ci_GLMM <-formatCI(exp(test),text = "english")[-c(1:2)]
+p_GLMM <- formatPval(summary(fit_GLMM)$coefficients[,4])[-1]
+
+GLMM_colname <- c("Odds Ratio","$95\\%$-confidence interval","$p$-value")
+GLMM_rowname <- c("Pre-employment","Education","CLAD","log(Time)")
+df.GLMM <- data.frame(round(OR_GLMM,digits=2),ci_GLMM,p_GLMM)
+colnames(df.GLMM)<- GLMM_colname
+rownames(df.GLMM) <- GLMM_rowname
+df_tab <- xtable(df.GLMM,
+caption=
+"Result for Generalized Linear Mixed-effects Model 
+for Post-LTx Work Status",
+label="tab:tab32")
+print(df_tab, scalebox=0.8, caption.placement = "top",sanitize.text.function = function(x) {x})
+@
+
+
+The result from generalized linear fixed effect model \ref{tab:tab32} showed that there is moderate evidence that time-dependent factor, \textit{CLAD}, is the predictor for post-transplantation work status.  
+
+
+
+\clearpage
+% =======================================
+\subsubsection*{Linear mixed-effect model for work status after LTx}\label{subsubsec:LMM}
+% =======================================
+
+Analogously, the first thing we did for linear mixed-effects model was time transformation.
+
+<<timetrans2,echo=FALSE,results='asis',message=FALSE>>=
+dat0 <- dat.long[-which(is.na(dat.long$Education)|
+                          is.na(dat.long$Percentage)|
+                          is.na(dat.long$Employment)),]
+reg0 <- lm(Percentage ~ log(Time) + Employment +Education,data=dat0)
+reg1 <- lm(Percentage ~ (Time) + Employment +Education,data=dat0)
+reg2 <- lm(Percentage ~  I(Time^2) + Employment +Education,data=dat0)
+bic1 <- BIC(reg0)
+bic2 <- BIC(reg1)
+bic3 <- BIC(reg2)
+reg.0 <- lm(Percentage ~ log(Time) + Employment ,data=dat0)
+reg.1 <- lm(Percentage ~ (Time) + Employment ,data=dat0)
+reg.2 <- lm(Percentage ~  I(Time^2) + Employment ,data=dat0)
+bic4 <- BIC(reg.0)
+bic5 <- BIC(reg.1)
+bic6 <- BIC(reg.2)
+Mwith1 <- c(bic4,bic5,bic6)
+Mwith2 <- c(bic1,bic2,bic3)
+bicdf.linear <- data.frame(Mwith1,Mwith2)
+colnames(bicdf.linear) <- c("Pre-employment","Education + Pre-employment")
+rownames(bicdf.linear) <- c("log(Time)","Time","$(\\mathrm{Time})^2$")
+bicdf.linear <- xtable(bicdf.linear,
+                       caption="Time transformation for work percentage after LTx",label="tab:tab29")
+print(bicdf.linear,
+      caption.placement="top",
+      sanitize.text.function = function(x) {x})
+@
+
+Table \ref{tab:tab29} shows that the time transformation for long-term work percentage is also log(Time), and \textit{Education} which we determined as a predictor for post-transplantation work status during the analyses for each time period, would also go into this model with respect to work percentage after lung transplantation.
+<<timeind2,echo=FALSE,results='asis',warning=FALSE,message=FALSE>>=
+dat.sel <- dat[-which(
+  is.na(dat$Education)|is.na(dat$Percentage)|
+    is.na(dat$Employment)|is.na(dat$CLAD)|
+    is.na(dat$Cancer)|is.na(dat$Kidney_Dialysis)),]
+reg1 <- lm(Percentage ~ log(Time) + Employment+Education
+             +CLAD
+             +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel)
+r1 <- c(1,1,1)
+reg2 <- lm(Percentage ~ log(Time) + Employment+Education
+            # +CLAD
+             +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel)
+r2 <- c(0,1,1)
+reg3 <- glm(Percentage ~ log(Time) + Employment+Education
+             +CLAD
+            # +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel)
+r3 <- c(1,0,1)
+reg4 <- lm(Percentage ~ log(Time) + Employment+Education
+             +CLAD
+             +Cancer
+             #+Kidney_Dialysis
+             ,data=dat.sel)
+r4 <- c(1,1,0)
+
+reg5 <- lm(Percentage ~ log(Time) + Employment+Education
+           #  +CLAD
+            # +Cancer
+             +Kidney_Dialysis,
+             data=dat.sel,family="binomial")
+r5 <- c(0,0,1)
+
+reg6<- lm(Percentage ~ log(Time) + Employment+Education
+             +CLAD
+            # +Cancer
+            # +Kidney_Dialysis
+           ,
+             data=dat.sel)
+r6 <- c(1,0,0)
+
+reg7<- lm(Percentage ~ log(Time) + Employment+Education
+            # +CLAD
+             +Cancer
+             #+Kidney_Dialysis
+           ,
+             data=dat.sel)
+r7 <- c(0,1,0)
+df <- data.frame(r1,r2,r3,r4,r5,r6,r7)
+bicdf.linear <- c(BIC(reg1),BIC(reg2),BIC(reg3),BIC(reg4),BIC(reg5),BIC(reg6),
+                  BIC(reg7))
+df <- rbind(df,bicdf.linear)
+rownames(df) <- c("CLAD","Cancer","Kidney-Dialysis","BIC")
+df <- t(df)
+df <- df[order(df[,"BIC"]),]
+rownames(df) <- c("Model 1","Model 2","Model 3",
+                  "Model 4","Model 5","Model 6","Model 7")
+df.table<-xtable(df,  digits=c(0,0,0,0,2), table.placement ="",
+                 caption = 'Model selection for work percentage based on Time-dependent factors')
+print(df.table, scalebox=0.8, caption.placement = "top")
+@
+
+Based on the BIC values for all possible choices of combination of time-dependent factors, we determined to include \textit{Kidney-Dialysis} as an additional predictor into the linear mixed-effect model. 
+
+
+The result from linear fixed-effect model \ref{tab:tab35} shows that there is moderate evidence for \textit{Kidney-Dialysis} as a predictor. 
+
+<<LMMtab,echo=FALSE,warning=FALSE,error=FALSE,results='asis',message=FALSE>>=
+
+fit_LMM <-lme4::lmer(Percentage ~ Employment  + Education +
+(1|ind) + Kidney_Dialysis +log(Time) ,
+data=dat.long)
+
+coef_fit <- lmerTest::lmer(fit_LMM,data=dat.long)
+coef_LMM <- (summary(coef_fit)$coefficients[,1])[-1]
+test <- confint(coef_fit)
+ci_LMM <-formatCI((test),text = "english")[-c(1:3)]
+p_LMM <- formatPval(summary(coef_fit)$coefficients[,5])[-1]
+LMM_colname <- c("Coefficients","$95\\%$-confidence interval","$p$-value")
+LMM_rowname <- c("Pre-employment","Education","Kidney-Dialysis","log(Time)")
+df.LMM <- data.frame(round(coef_LMM,digits=2),ci_LMM,p_LMM)
+colnames(df.LMM)<- LMM_colname
+rownames(df.LMM) <- LMM_rowname
+df_tab <- xtable(df.LMM,
+                 caption=
+                   "Result for Linear Mixed-effects 
+                 Model for Post-LTx Work percentages",
+                 label="tab:tab35")
+print(df_tab, scalebox=0.8, caption.placement = "top",sanitize.text.function = function(x) {x})
+@
+
+
+\clearpage
+%=======================================
+\section{Conclusion} \label{sec:conclu}
+%=======================================
+From the results of longitudinal data analysis, we determine \textit{Pre-employment} and  \textit{Education} as the predictors for long-term work status. The odds ratio for \textit{Pre-employment} is \Sexpr{sprintf("%.2f",OR_GLMM[1])}, \Sexpr{ci_GLMM[1]}. Odds ratio for \textit{Education} is \Sexpr{round(OR_GLMM[2],digits=2)}, 95\% confidence interval \Sexpr{ci_GLMM[2]}, showing moderate evidence of the effect on the post-transplantation work status. \textit{CLAD} is also a predictor, with odds ratio \Sexpr{sprintf("%.2f",OR_GLMM[3])}, 95\% confidence interval \Sexpr{ci_GLMM[3]}.
+
+Similarly for work percentage, \textit{Pre-employment} showed strong evidence as a predictor, while the evidence for \textit{Education} is weak. The evidence for the negative effect of \textit{Kidney-Dialysis} is moderate.
+
+The effect of lung transplantation on work participation would be better and better with time. From the our results, patients who were employed and with academic education would be more likely to return to work after lung transplantation.
+
+In an attempt to improve the work participation after lung transplantation, measurements should be taken to avoid CLAD and also some renal dysfunctions.
+
+
+\vspace{2cm}
+%=======================================
+%\section{References} \label{sec:ref}
+%=======================================
+\nocite{R}
+
+\bibliography{consulting}
+
+
+\vfill
+
+\footnotesize
+
+<<rdetails, echo = FALSE, echo = FALSE>>=
+# Base packages:
+s <- sessionInfo()
+s1 <- s$basePkgs[1]
+for (i in 2:length(s$basePkgs)){s1 <- paste(s1, ", ", s$basePkgs[i], sep = "")}
+
+# Other Packages:
+pack.info <- installed.packages()
+output.packages <- data.frame(pack.info[names(s$otherPkgs) ,c("Package",
+"Version")])
+
+s2 <- paste(names(s$otherPkgs)[1],
+output.packages[names(s$otherPkgs)[1], "Version"])
+k <- length(names(s$otherPkgs))
+if(k>1) for (i in 2:k){s2 <- paste(s2, ", ",
+paste(names(s$otherPkgs)[i], output.packages[names(s$otherPkgs)[i],
+"Version"]), sep = "")}
+@
+
+
+
+
+\vfill
+
+\footnotesize{{\bf \prog{R} version and packages used to generate this report:}
+
+\prog{R} version: \textsf{\Sexpr{s$R.version$version.string}}
+
+Base packages: \textsf{\Sexpr{s1}}
+
+Other packages: \textsf{\Sexpr{s2}}
+
+This document was generated on \Sexpr{format(Sys.time(), "%B %d, %Y at %H:%M")}.
+
+
+\clearpage
+
+
+
+
+% =======================================
+\section{Appendix} \label{sec:app}
+% =======================================
+<<appendix,eval=FALSE, echo=TRUE>>=
+####### code for packages, settings, data prep
+<<setup>>
+<<data_clean>>
+  
+####### code for results showing in abstract
+<<abstract_code>>
+  
+  
+    
+####### code for Data Description
+<<charater>>
+<<agesex>>
+<<contin>>
+<<assos>>
+  
+<<timedep_tab>>  
+<<heatmap_pre>>
+<<timedep_heatmap>>
+  
+<<tenperc_pre>>
+<<tenperc>>
+<<percentplot_pre>>
+<<workperc>>
+  
+####### code for results: first research question
+<<workstat>>
+<<workstat_tab>>
+
+####### code for Results
+<<setup.log>>
+<<logreg1>>
+<<logsel1>>
+<<logresult1>>
+
+<<logreg2>>
+<<logsel2>>
+<<logresult2>>
+  
+<<twoby2plot>>
+<<logreg3>>  
+  
+<<logreg4>>
+<<logsel3>>
+<<logresult3>>  
+  
+<<twoby2plot2>>
+<<logreg5>>
+
+####### code for the result of logistic regression 
+####### for all of the seprate time periods
+<<log_all>>
+  
+<<lmsetup>>
+<<lmreg1>>
+<<lmsel1>>
+<<lmresult1>>
+  
+<<lmreg2>>
+<<lmsel2>>
+<<lmresult2>>
+
+<<lmreg3>>
+<<lmsel3>>
+<<lmresult3>>
+  
+<<lmreg4>>
+<<lmsel4>>
+<<lmresult4>>
+  
+<<lmreg5>>
+<<lmsel5>>
+<<lmresult5>>
+  
+####### code for the result of logistic regression
+####### for all of the seprate time periods
+<<lm_all>>  
+  
+  
+  
+### code for LDA
+<<number_measurements>>
+
+## code for LAD for work status
+<<timetrans>>
+<<timind>>
+
+  
+<<GLMMtab>>
+## code for LAD for work percentage
+<<timetrans2>>
+<<timeind2>>
+
+  
+<<LMMtab>>
+
+@
+
+
+\end{document}
+
+
+
+
+
+
