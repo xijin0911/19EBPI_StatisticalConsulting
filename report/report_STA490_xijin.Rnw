@@ -108,7 +108,7 @@ Version \of \versiondate
 <<include=FALSE,error=FALSE,message=FALSE>>=
 library(knitr)
 opts_chunk$set(
-fig.path='plots/p', echo = FALSE, results='hide', cache=TRUE)
+fig.path='plots/p', echo = FALSE, results='hide')
 @
 
 % =======================================
@@ -151,7 +151,6 @@ library(stringr)#manipulation of work percentage
 library(huxtable)
 library(lmerTest)
 
-
 #source("../code/data_cleaning.R")
 
 @
@@ -172,9 +171,24 @@ dat <- unique(dat)
 dat <- dat[-nrow(dat),]
 dim(dat)#99  60
 
+#1010: delete of those 12 without incomes
+#only 87 subjects (students deleted)
+#1103: delted 11 patients instead of 12!!!
+#Cases to be excluded from analysis: 
+#Pupils/Students: ID 7, 16, 56, 59, 60, 62, 63, 82, 85, 87, 99 (see column "AH")
+#dat <- dat[-c(7,56,59,60,62,63,66,82,85,87,97,99),] 
+#dat <- dat[-c(7,16,56,59,60,62,63,82,85,87,99),] 
+
+##191129 
+## delete number 27 37 48 77, who do not have LTx
+dat <- dat[-c(7,16,27,37,48,77,56,59,60,62,63,82,85,87,99),] 
+#dat <- dat[-c(27,37,48,77),]
+
+dim(dat)#88 60 
+#84 60
 ## extract the useful ones
 ## ----------------
-binary_pred <- (dat[,c(8,3,4,6,28,51,55,59)])
+binary_pred <- dat[,c(8,3,4,6,28,51,55,59)]
 colnames(binary_pred) <- c("Sex","Education","Relationship","Living",
                            "Employment","CLAD","kidney_Tx","Cancer")
 num_pred <- dat[,c(9,26,27,44)]
@@ -263,67 +277,103 @@ factor5 <- str_replace(factor5, "40-80", "60")
 factor5 <- str_replace(factor5, "20-30", "25")
 factor5 <- str_replace(factor5, "80-100", "90")
 factor5 <- str_replace(factor5, "(5-10)", "7")
-factor5[47] <- "7"
+factor5[43] <- "7"   #subject 46 with extra bracket
 factor5 <- str_replace(factor5, "50-60", "55")
 factor5 <- str_replace(factor5, "20-30", "25")
 out_percent$longer_ten_perc <- as.numeric(factor5)
 
+####################################################
 ## consistency btw work percentage and work status
-## ----------------
-outcome <- cbind(ind=1:99,pred,out_percent,out_stat)
-outcome[which(outcome[,"less_one"]==0),][,"less_one_perc"]
-outcome[which(outcome[,"less_one"]==1),][,"less_one_perc"]
-outcome[which(is.na(outcome[,"less_one"])==TRUE),][,"less_one_perc"]
-#no wired data for percentage
+####################################################
+outcome <- cbind(ind=1:84,pred,out_percent,out_stat)
 
 
-outcome[which(outcome[,"one_three"]==0),][,"one_three_perc"]
-#1 wired data for 1-3 years percentage
+## less than one year----------------
+outcome[which(outcome[,"less_one"]==0),][,"less_one_perc"]  
+outcome[which(outcome[,"less_one"]==1),][,"less_one_perc"] 
+outcome[which(is.na(outcome[,"less_one"])==TRUE),][,"less_one_perc"]  
+#60 no-work
+#23 work
+#1 NA
+
+
+## one to three years----------------
 outcome[which((outcome[,"one_three"]==0)&
                 (outcome[,"one_three_perc"] > 0)),][,"one_three"] <- 1
-outcome[which(outcome[,"one_three"]==1),][,c("ind","one_three_perc")]
-outcome[81,"one_three"] <- 0
-outcome[which(is.na(outcome[,"one_three"])==TRUE),][,c("ind","one_three_perc","one_three")]
-# the 4 and 40 indicator patient
-outcome[4,"one_three"] <- 0
-outcome[40,"one_three"] <- 1
+outcome[which((outcome[,"one_three"]==1)&
+                (outcome[,"one_three_perc"] == 0)),][,"one_three"] <- 0
+outcome[which((is.na(outcome[,"one_three"])==TRUE)&
+                (outcome[,"one_three_perc"]==0)),][,"one_three"]  <- 0
+outcome[which((is.na(outcome[,"one_three"])==TRUE)&
+                (outcome[,"one_three_perc"] >= 0)),][,"one_three"]  <- 1
+
+outcome[which(outcome[,"one_three"]==0),][,"one_three_perc"]  
+outcome[which(outcome[,"one_three"]==1),][,"one_three_perc"] 
+outcome[which(is.na(outcome[,"one_three"])==TRUE),][,"one_three_perc"]  
+#29 no-work
+#51 work
+#4 NA
+
+## three to five years----------------
+outcome[which((outcome[,"three_five"]==0)&
+                (outcome[,"three_five_perc"] > 0)),][,"three_five"] <- 1
+outcome[which((outcome[,"three_five"]==1)&
+                (outcome[,"three_five_perc"] == 0)),][,"three_five"] <- 0
+# outcome[which((is.na(outcome[,"three_five"])==TRUE)&
+#                 (outcome[,"three_five_perc"]==0)),][,"three_five"]  <- 0
+#  outcome[which((is.na(outcome[,"three_five"])==TRUE)&
+#                  (outcome[,"three_five_perc"] >= 0)),][,"three_five"]  <- 1
+
+outcome[which(outcome[,"three_five"]==0),][,"three_five_perc"]  
+outcome[which(outcome[,"three_five"]==1),][,"three_five_perc"] 
+outcome[which(is.na(outcome[,"three_five"])==TRUE),][,"three_five_perc"]  
+#15 no-work
+#44 work
+#25 NA
+
+## five to ten years----------------
+outcome[which((outcome[,"five_ten"]==0)&
+                (is.na(outcome[,"five_ten_perc"]))),][,"five_ten_perc"] <- 0
+outcome[which((outcome[,"five_ten"]==1)&
+                (outcome[,"five_ten_perc"] == 0)),][,"five_ten"] <- 0
+outcome[which((is.na(outcome[,"five_ten"])==TRUE)&
+                (outcome[,"five_ten_perc"] >= 0)),][,"five_ten"]  <- 1
+
+outcome[which(outcome[,"five_ten"]==0),][,"five_ten_perc"]  
+outcome[which(outcome[,"five_ten"]==1),][,"five_ten_perc"] 
+outcome[which(is.na(outcome[,"five_ten"])==TRUE),][,"five_ten_perc"]  
+#14 no-work
+#31 work
+#39 NA
 
 
-outcome[which(outcome[,"three_five"]==0),][,c("ind","three_five_perc","three_five")]
-#two wired data for 3-5 years percentage
-outcome[which((outcome[,"three_five"]==0)
-              &(outcome[,"three_five_perc"] > 0)),][,"three_five"] <- 1
-outcome[which(outcome[,"three_five"]==1),][,c("ind","three_five_perc","three_five")]
-outcome[which(is.na(outcome[,"three_five"])==TRUE),][,c("ind","three_five_perc","three_five")]
+## longer than ten years----------------
+outcome[which((outcome[,"longer_ten"]==0)&
+                (is.na(outcome[,"longer_ten_perc"]))),][,"longer_ten_perc"] <- 0
+# outcome[which((outcome[,"longer_ten"]==1)&
+#                 (outcome[,"longer_ten_perc"] == 0)),][,"longer_ten"] <- 0
+outcome[which((is.na(outcome[,"longer_ten"])==TRUE)&
+                (outcome[,"longer_ten_perc"] >= 0)),][,"longer_ten"]  <- 1
 
+outcome[which(outcome[,"longer_ten"]==0),][,"longer_ten_perc"]  
+outcome[which(outcome[,"longer_ten"]==1),][,"longer_ten_perc"] 
+outcome[which(is.na(outcome[,"longer_ten"])==TRUE),][,"longer_ten_perc"]  
+#7 no-work
+#21 work
+#56 NA
 
-outcome[which(outcome[,"five_ten"]==0),][,c("ind","five_ten_perc","five_ten")]
-# one wired data for percentage
-outcome[52,"five_ten_perc"] <- 0
-outcome[which(outcome[,"five_ten"]==1),][,c("ind","five_ten_perc","five_ten")]
-outcome[which((outcome[,"five_ten"]==1)
-              &(outcome[,"five_ten_perc"]==0)),][,"five_ten"] <- 0
-outcome[which(is.na(outcome[,"five_ten"])==TRUE),][,c("ind","five_ten_perc","five_ten")]
-outcome[58,"five_ten"] <- 1
-outcome[68,"five_ten"] <- 1
-
-
-outcome[which(outcome[,"longer_ten"]==0),][,c("ind","longer_ten_perc","longer_ten")]
-outcome[4,"longer_ten_perc"] <- 0
-outcome[which(outcome[,"longer_ten"]==1),][,c("ind","longer_ten_perc","longer_ten")]
-outcome[which(is.na(outcome[,"longer_ten"])==TRUE),][,c("ind",
-                                                        "longer_ten_perc","longer_ten")]
-outcome[78,"longer_ten"] <- 1
 
 date <- dat[,c("LTx_date","CLAD_ED",
                "Kidney_Tx_Date","Start_Dialyse_Date","Cancer_ED","Waiting_list_date")]
 dat <- cbind(outcome,date)
 
 
-## creat time-varying variables by the date of LTx and case date
-## ---------------
+####################################################
+## time-varying variables by the date of LTx and case date
+####################################################
 
-##CLAD
+
+##CLAD ---------------
 CLAD_day <- dat[which(dat[,"CLAD"]=="yes"),][,c("ind","LTx_date","CLAD_ED")]
 CLAD_day$LTx_date <- as.character(CLAD_day$LTx_date)
 CLAD_day$LTx_date <- as.Date(CLAD_day$LTx_date,na.action=TRUE,format="%d/%m/%Y")
@@ -358,7 +408,7 @@ dat <- cbind(dat,CLAD_1,CLAD_3,CLAD_5,CLAD_10)
 
 
 
-#CLAD
+##Cancer ---------------
 Cancer_day <- dat[which(dat[,"Cancer"]=="yes"),][,c("ind","LTx_date","Cancer_ED")]
 Cancer_day$LTx_date <- as.character(Cancer_day$LTx_date)
 Cancer_day$LTx_date <- as.Date(Cancer_day$LTx_date,na.action=TRUE,format="%d/%m/%Y")
@@ -392,16 +442,18 @@ Cancer_10[dat[which(is.na(dat$Cancer)==TRUE),][,"ind"]] <- NA
 dat <- cbind(dat,Cancer_1,Cancer_3,Cancer_5,Cancer_10)
 
 
-#Kidney_dialysis
+#Kidney_dialysis ---------------
 kidney_Dialysis_day <- dat[which(dat[,"kidney_Tx"]=="yes"),][,c("ind",
                                                                 "LTx_date","kidney_Tx",
                                                                 "Kidney_Tx_Date",
                                                                 "Start_Dialyse_Date" )]
 
+
+
 ######9 cases
 #two missing both date(kidney_TX and Dialyse)
-dat[47,"kidney_Tx"] <- NA
-dat[49,"kidney_Tx"] <- NA
+dat[which(dat[,"ind"]==43),][,"kidney_Tx"] <- NA
+dat[which(dat[,"ind"]==44),][,"kidney_Tx"] <- NA
 
 kidney_Dialysis <- dat$kidney_Tx
 #1 year later
@@ -417,12 +469,14 @@ kidney_Dialysis_3 <- kidney_Dialysis_1
 #5 years later
 kidney_Dialysis_5 <- matrix(dat$kidney_Tx,nrow=length(dat[,"kidney_Tx"]),ncol=1)
 kidney_Dialysis_5[which(kidney_Dialysis_5=="yes")] <- "no"
-kidney_Dialysis_5[1,] <- "yes"
-#1 case
+kidney_Dialysis_5[1,] <- "yes"  
+#1 case: this subject had this disease this time
 #10 years later
 kidney_Dialysis_10 <- matrix(dat$kidney_Tx,nrow=length(dat[,"kidney_Tx"]),ncol=1)
-kidney_Dialysis_10[17,] <- "no"
-kidney_Dialysis_10[79,] <- "no"
+#kidney_Dialysis_10[17,] <- "no"
+kidney_Dialysis_10[16,] <- "no"
+#kidney_Dialysis_10[79,] <- "no"
+kidney_Dialysis_10[72,] <- "no"
 dat <- cbind(dat,kidney_Dialysis,kidney_Dialysis_1,
              kidney_Dialysis_3,kidney_Dialysis_5,
              kidney_Dialysis_10)
@@ -457,14 +511,16 @@ dat$Living <- relevel(dat$Living,ref="not alone")
 levels(dat$Living) <- c("Not alone","Alone")
 levels(dat$Sex) <- c("Female","Male")
 
-write.csv(dat,"../data/shortformat.csv")
+write.csv(dat,"../data/shortformat191010.csv")
 
 ## Long Format Dataset
 ## ---------------
 
 #1st choose the mean of the distance from LTx for longer than ten years period
-end <- as.Date("01/12/2016","%m/%d/%Y")
-duration <- difftime(rep(end,nrow(dat)), dat$LTx_date, units = "days")/365
+end <- as.Date("01/12/2016","%d/%m/%Y")
+#duration <- difftime(rep(end,nrow(dat)), dat$LTx_date, units = "days")/365
+duration <- difftime(rep(end,nrow(dat)), as.Date(dat$LTx_date,"%d/%m/%Y"), units = "days")/365
+
 mean((as.numeric(duration[(as.numeric(duration)>10)])),na.rm=TRUE)
 
 dat1 <- reshape(dat, 
@@ -515,6 +571,8 @@ longdata<-cbind(dat1,Percentage=dat2$Percentage,
                 CLAD=dat3$CLAD.l,Cancer=dat4$Cancer.l,
                 Kidney_Dialysis=dat5$Kidney_Dialysis.l
 )
+nrow(longdata)# 87*5
+
 longformat <- 
   longdata[,c("ind","Sex","Education","Relationship","Living",
               "Employment","Age","BMI", "6MWD",
@@ -535,11 +593,14 @@ sum(is.na(duration))#4 NA
 
 dat.dura <- cbind(dat,duration)
 patient_longerten <- dat.dura[which(duration>10),c("ind","duration")]
-#28 patients who end at the time period 5.
+#28 patients who end at the time period 5. (Previous)
+#27 patients who end at the time period 5. 
 patient_longerfive <- dat.dura[which((duration>5)&(duration<10)),c("ind","duration")]
-#19 patients who end at the time period 4.
+#19 patients who end at the time period 4.(Previous)
+#15 patients who end at the time period 4.
 patient_longerthree <- dat.dura[which((duration>3)&(duration<5)),c("ind","duration")]
-#15 patients who end at the time period 3
+#15 patients who end at the time period 3.(Previous)
+#12 patients who end at the time period 3.
 patient_longerone <- dat.dura[which((duration>1)&(duration<3)),c("ind","duration")]
 #23 patients who end at the time period 2
 patient_withinone <- dat.dura[which((duration<1)&(duration>0)),c("ind","duration")]
@@ -547,13 +608,17 @@ patient_withinone <- dat.dura[which((duration<1)&(duration>0)),c("ind","duration
 
 #the exact time for the final time period for each patient
 longdata2 <- longformat
-Num5 <- patient_longerten$ind+4*99
-Num4 <- patient_longerfive$ind+3*99
-Num3 <- patient_longerthree$ind+2*99
-Num2 <- patient_longerone$ind+1*99
+#Num5 <- patient_longerten$ind+4*99
+Num5 <- patient_longerten$ind+4*87
+#Num4 <- patient_longerfive$ind+3*99
+Num4 <- patient_longerfive$ind+3*87
+#Num3 <- patient_longerthree$ind+2*99
+Num3 <- patient_longerthree$ind+2*87
+#Num2 <- patient_longerone$ind+1*99
+Num2 <- patient_longerone$ind+1*87
 Num1 <- patient_withinone$ind
 longdata2[Num5,]$Time <- patient_longerten$duration
-longdata2[Num4,]$Time <- patient_longerfive$duration
+longdata2[Num4,]$Time <- patient_longerfive$duration 
 longdata2[Num3,]$Time <- patient_longerthree$duration
 longdata2[Num2,]$Time <- patient_longerone$duration
 
@@ -814,7 +879,6 @@ We classify the types of predictors based on the whether they change with time, 
 \begin{table}[ht]
 \centering
 <<charater,results='asis',echo=FALSE,warning=FALSE,error=FALSE>>=
-
 dat.ind <- dat[,c("Age","BMI","6MWD","FEV1","Waiting_time","Sex",
                   "Education","Relationship","Living", "Employment")]
 colnames(dat.ind) <- c("Age","BMI","6MWD","Best FEV1 pred",
@@ -831,7 +895,7 @@ kable(tab1, format = "latex",booktabs = T)
 \caption{Time-independent factors}\label{tab:tab1}
 \end{table}
 
-The main characteristics of the \Sexpr{nrow(dat)} patients are listed in table \ref{tab:tab1}. The mean age of our study population is \Sexpr{round(mean(dat$Age),0)} years old. 
+The main characteristics of the \Sexpr{nrow(dat)} patients are listed in table \ref{tab:tab1}. The mean age of our study population is \Sexpr{round(mean(dat$Age,na.rm=TRUE),0)} years old. 
 
 Most of the patients had non-academic education 
 (\Sexpr{sprintf("%.2f",(sum(dat$Education=="Non-academic")/sum(!is.na(dat$Education))*100))}\%), 
@@ -874,7 +938,7 @@ ggarrange(agesex_plot,status2)
 \caption{Distributions of population with respect to Sex, Age, Living and Relationship Status}\label{fig:fig1}
 \end{figure}
 
-Figure \ref{fig:fig1} shows that for male and female patients, the distribution of age are very similar. The mean of age in these two groups, are both around \Sexpr{round(mean(dat$Age),0)} years old. The age of half of the patients range from \Sexpr{round(data.frame(quantile(dat$Age))["25%",],0)} to \Sexpr{round(data.frame(quantile(dat$Age))["75%",],0)} years old. There is one outlier, who was much older than the rest of patients. This is an individual case with age of \Sexpr{max(dat$Age)} years old. The distribution of age of patients illustrate the fact that too old patients would not be proper candidates for lung transplantation.
+Figure \ref{fig:fig1} shows that for male and female patients, the distribution of age are very similar. The mean of age in these two groups, are both around \Sexpr{round(mean(dat$Age,na.rm=TRUE),0)} years old. The age of half of the patients range from \Sexpr{round(data.frame(quantile(dat$Age,na.rm=TRUE))["25%",],0)} to \Sexpr{round(data.frame(quantile(dat$Age,na.rm=TRUE))["75%",],0)} years old. There is one outlier, who was much older than the rest of patients. This is an individual case with age of \Sexpr{max(dat$Age,na.rm=TRUE)} years old. The distribution of age of patients illustrate the fact that too old patients would not be proper candidates for lung transplantation.
 
 
 As for relation status and living status, there is an obvious imbalance. Much more patients were living alone, and the proportion of single patients was twice as large as the proportion of the not single group.
@@ -1166,11 +1230,11 @@ It is natural that patients would work less or never work right after lung trans
 <<percentplot_pre,echo=FALSE>>=
 percent <- dat[,c("less_one_perc","one_three_perc",
                   "three_five_perc","five_ten_perc","longer_ten_perc")]
-colnames(percent) <-  c("Period 1 (<1 year)",
-                        "Period 2 (1 to 3 years)",
-                        "Period 3 (3 to 5 years)",
-                        "Period 4 (5 to 10 years)",
-                        "Period 5 (> 10 years)")
+colnames(percent) <-  c("< 1 year",
+                        "1 to 3 years",
+                        "3 to 5 years",
+                        "5 to 10 years",
+                        "> 10 years")
 
 @
 
@@ -1178,27 +1242,63 @@ colnames(percent) <-  c("Period 1 (<1 year)",
 \begin{figure}[ht]
 \centering
 <<workperc,fig.height=3,fig.width=5,warning=FALSE>>=
+lvls <- c("< 1 year", "1 to 3 years", "3 to 5 years", "5 to 10 years", "> 10 years")
 percent %>% 
   tidyr::gather("Time", "value",1:5) %>% 
-  ggplot(., aes(x = Time, y = value,col=Time))+
-  labs(y = "Work percentage(%)",x="Time period after LTx") +
-	geom_jitter(width = 0.3, height = 0.5,size=2,na.rm=TRUE,shape=1)+
+  mutate(Time = factor(Time, lvls)) %>%
+  ggplot(., aes(x = Time, y = value))+
+  labs(y = "Work percentage (%)",x="") +	   geom_jitter(width = 0.3, height = 0.1,size=2,na.rm=TRUE,shape=1)+
   geom_boxplot(alpha=0.2)+
-	theme(line = element_blank())+
-	theme(panel.grid.major = element_blank(), 
-				panel.grid.minor = element_blank(),
-panel.background = element_blank(), 
-axis.line = element_line(colour = "black"))+
-  theme(legend.position="right",
-  			legend.text=element_text(size=8),
-  			legend.title =element_text(size=15),
-  			axis.text.x = element_blank())+
-  	scale_colour_hue(breaks= c("Period 1 (<1 year)",
-                       "Period 2 (1 to 3 years)","Period 3 (3 to 5 years)",
-                       "Period 4 (5 to 10 years)","Period 5 (> 10 years)"))+
-	theme(plot.title = element_text(size = 16, face = "bold"))
+  theme_classic() +
+  theme(axis.text.x = element_text(size = rel(1.3)))
+
+ggsave("workperc_bw_20191212.jpeg", dpi = 300, width = 6, height = 6)
+
+percent %>% 
+  tidyr::gather("Time", "value",1:5) %>% 
+  mutate(Time = factor(Time, lvls)) %>%
+  ggplot(., aes(x = Time, y = value, color = Time))+
+  labs(y = "Work percentage (%)",x="") +	   geom_jitter(width = 0.3, height = 0.1,size=2,na.rm=TRUE,shape=1)+
+  geom_boxplot(alpha=0.2)+
+  scale_color_brewer(palette = "Set1") + 
+  guides(color = FALSE) + 
+  theme_classic() +
+  theme(axis.text.x = element_text(size = rel(1.3)))
+
+ggsave("workperc_set1_20191212.jpeg", dpi = 300, width = 6, height = 6)
+
+percent %>% 
+  tidyr::gather("Time", "value",1:5) %>% 
+  mutate(Time = factor(Time, lvls)) %>%
+  ggplot(., aes(x = Time, y = value, color = Time))+
+  labs(y = "Work percentage (%)",x="") +	   geom_jitter(width = 0.3, height = 0.1,size=2,na.rm=TRUE,shape=1)+
+  geom_boxplot(alpha=0.2)+
+  scale_color_brewer(palette = "Dark2") + 
+  guides(color = FALSE) + 
+  theme_classic() +
+  theme(axis.text.x = element_text(size = rel(1.3)))
+
+ggsave("workperc_dark2_20191212.jpeg", dpi = 300, width = 6, height = 6)
+
+# 	theme(line = element_blank())+
+# 	theme(panel.grid.major = element_blank(), 
+# 				panel.grid.minor = element_blank(),
+# panel.background = element_blank(), 
+# axis.line = element_line(colour = "black"))+
+#   theme(legend.position="right",
+#   			legend.text=element_text(size=8),
+#   			legend.title =element_text(size=15),
+#   			axis.text.x = element_blank())
+# 
+# +
+#   	scale_colour_hue(breaks= c("< 1 year",
+#                        "1 to 3 years",
+#                        "3 to 5 years",
+#                        "5 to 10 years",
+#                        "> 10 years"))+
+# 	theme(plot.title = element_text(size = 16, face = "bold"))
 @
-\caption{Post-transplantation work percentage of all the periods}\label{fig:fig7}
+
 \end{figure}
 
 
@@ -1265,7 +1365,7 @@ Total <- cbind(nrow(dat[-which(is.na(dat$less_one)),]),
 mat <- rbind(mat,Total)
 colnames(mat) <- c("Period 1","Period 2","Period 3",
                    "Period 4","Period 5")
-rownames(mat) <- c("Work","Not work","NA","Total")
+rownames(mat) <- c("Not work","Work","NA","Total")
 res.table<-xtable(mat, caption = 'Post-LTx work status', 
                   table.placement ="",label="tab:tab3")
 print(res.table, scalebox=1.0, caption.placement = "top")
